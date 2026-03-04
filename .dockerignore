@@ -1,0 +1,9 @@
+node_modules
+build
+.svelte-kit
+.vite
+data
+.git
+*.db
+*.db-wal
+*.db-shm
