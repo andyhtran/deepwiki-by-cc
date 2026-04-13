@@ -6,8 +6,8 @@ services:
     volumes:
       - data:/home/deepwiki/app/data
       - claude-config:/home/deepwiki/.claude
-    environment:
-      - GH_TOKEN=${GH_TOKEN:-}
+    env_file:
+      - .env.docker
     restart: unless-stopped
 
 volumes:

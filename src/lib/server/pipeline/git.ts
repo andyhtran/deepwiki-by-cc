@@ -177,12 +177,28 @@ export function cloneRepo(owner: string, name: string): { clonePath: string; com
 						? (err as any).stderr.toString()
 						: String((err as any).stderr)
 					: "";
-			if (stderr.includes("could not read Username") || stderr.includes("Authentication failed")) {
+			// No token configured — user needs to set one up
+			if (stderr.includes("could not read Username")) {
 				throw new Error(
-					`Repository ${owner}/${name} is private or does not exist. Set GH_TOKEN in your .env file to access private repos.`,
+					`This repository requires authentication. Set a GitHub token to access private repositories.`,
 				);
 			}
-			throw err;
+			// Token is invalid or expired
+			if (stderr.includes("Authentication failed")) {
+				throw new Error(
+					`GitHub authentication failed. Your token may be expired or invalid — generate a new one and update your configuration.`,
+				);
+			}
+			// Token doesn't have access, or repo doesn't exist
+			if (stderr.includes("Repository not found")) {
+				throw new Error(
+					`Could not access ${owner}/${name}. Check that the repo URL is correct and your GitHub token has access to this repository.`,
+				);
+			}
+			// Sanitize token from error messages before rethrowing
+			const sanitized = new Error(`Failed to clone ${owner}/${name}. Check that the repository exists and is accessible.`);
+			sanitized.stack = err instanceof Error ? err.stack?.replace(/x-access-token:[^@]+@/g, "x-access-token:***@") : undefined;
+			throw sanitized;
 		}
 	}
 
