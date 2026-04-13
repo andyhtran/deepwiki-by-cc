@@ -57,7 +57,7 @@ Visit `/settings` in the UI to configure:
 
 DeepWiki includes an MCP server that exposes generated wikis to Claude Code and other MCP-compatible agents. This lets an AI agent query your project's wiki as context while working.
 
-### Register with Claude Code
+### Stdio mode (local dev)
 
 ```bash
 # Using the justfile
@@ -65,6 +65,23 @@ just mcp-add
 
 # Or manually
 claude mcp add deepwiki -s user -- bun /path/to/deepwiki-by-cc/src/mcp/server.ts
+```
+
+### HTTP mode (Docker / network access)
+
+When running in Docker, the MCP server starts automatically in HTTP mode on port 3001:
+
+```bash
+# Test the endpoint
+curl http://localhost:3001/health
+
+# The MCP endpoint is at /mcp (Streamable HTTP transport)
+```
+
+You can also run HTTP mode locally:
+
+```bash
+bun run mcp:http   # starts on port 3001 (override with MCP_PORT)
 ```
 
 ### Available tools
@@ -84,6 +101,8 @@ cd deepwiki-by-cc
 docker compose up -d
 ```
 
+The web UI is served on port 8080 and the MCP HTTP server on port 3001.
+
 ### Authenticate Claude CLI (one-time)
 
 The app uses the Claude CLI under the hood. You need to log in once inside the container — credentials are persisted in a Docker volume so you won't need to do this again.
@@ -102,7 +121,7 @@ If you get a response, DeepWiki is ready at [http://localhost:8080](http://local
 
 ### Private repositories (optional)
 
-To generate wikis for private GitHub repos, create a `.env` file:
+To generate wikis for private GitHub repos, create a `.env.docker` file:
 
 ```bash
 GH_TOKEN=ghp_...
@@ -145,7 +164,7 @@ bun run start     # Start production server (port 8080)
 - **Frontend**: SvelteKit 5, Mermaid, highlight.js
 - **Backend**: SvelteKit server routes, SQLite (better-sqlite3), background job queue
 - **AI**: Claude CLI (subprocess with streaming JSON output)
-- **MCP**: `@modelcontextprotocol/sdk` with stdio transport
+- **MCP**: `@modelcontextprotocol/sdk` with stdio and Streamable HTTP transports
 
 ## License
 
