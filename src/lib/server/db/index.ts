@@ -28,6 +28,20 @@ export function getDb(): Database.Database {
 		db.exec(`${stmt};`);
 	}
 
+	// Migration: add version column to wikis and backfill with per-repo sequence numbers
+	const cols = db.prepare("PRAGMA table_info(wikis)").all() as { name: string }[];
+	if (!cols.some((c) => c.name === "version")) {
+		db.exec("ALTER TABLE wikis ADD COLUMN version INTEGER");
+		db.exec(`
+			UPDATE wikis SET version = (
+				SELECT rn FROM (
+					SELECT id, ROW_NUMBER() OVER (PARTITION BY repo_id ORDER BY created_at ASC) AS rn
+					FROM wikis
+				) ranked WHERE ranked.id = wikis.id
+			)
+		`);
+	}
+
 	_db = db;
 	return db;
 }

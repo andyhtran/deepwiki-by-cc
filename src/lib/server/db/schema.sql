@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS wikis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     repo_id INTEGER REFERENCES repos(id) ON DELETE CASCADE,
+    version INTEGER,
     title TEXT NOT NULL,
     description TEXT,
     structure TEXT NOT NULL,

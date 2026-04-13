@@ -1,8 +1,8 @@
-import { error } from "@sveltejs/kit";
+import { error, redirect } from "@sveltejs/kit";
 import { getDb } from "$lib/server/db/index.js";
 import {
-	getWikiById,
 	getWikiByOwnerRepo,
+	getWikiByOwnerRepoVersion,
 	getWikiPages,
 	getWikisByOwnerRepo,
 } from "$lib/server/db/wikis.js";
@@ -12,14 +12,22 @@ import type { PageServerLoad } from "./$types.js";
 export const load: PageServerLoad = async ({ params, url }) => {
 	const versionId = url.searchParams.get("v");
 
+	// Without ?v=, show the latest version
+	const latest = getWikiByOwnerRepo(params.owner, params.repo);
+
 	let wiki;
 	if (versionId) {
-		wiki = getWikiById(Number(versionId));
+		// Look up by version number scoped to this owner/repo (prevents cross-repo leaks)
+		wiki = getWikiByOwnerRepoVersion(params.owner, params.repo, Number(versionId));
 		if (!wiki) {
 			throw error(404, "Wiki version not found");
 		}
+		// If ?v= points to the latest version, redirect to the clean URL
+		if (latest && wiki.id === latest.id) {
+			throw redirect(302, `/${params.owner}/${params.repo}`);
+		}
 	} else {
-		wiki = getWikiByOwnerRepo(params.owner, params.repo);
+		wiki = latest;
 		if (!wiki) {
 			throw error(404, "Wiki not found");
 		}
@@ -81,12 +89,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		repo: params.repo,
 		versions: versions.map((v) => ({
 			id: v.id,
+			version: v.version,
 			model: v.model,
 			status: v.status,
 			page_count: v.page_count,
 			created_at: v.created_at,
 		})),
-		currentVersionId: wiki.id,
+		currentVersion: wiki.version,
 		activeJobId,
 		defaultBranch: repo?.default_branch ?? "main",
 		lastIndexedSha: repo?.last_commit_sha ?? null,

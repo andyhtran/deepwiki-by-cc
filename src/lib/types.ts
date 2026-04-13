@@ -14,6 +14,7 @@ export interface Repo {
 export interface Wiki {
 	id: number;
 	repo_id: number | null;
+	version: number;
 	title: string;
 	description: string | null;
 	structure: string;

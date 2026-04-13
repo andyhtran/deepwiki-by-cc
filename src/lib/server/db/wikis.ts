@@ -11,20 +11,28 @@ export function createWiki(data: {
 	generation_duration_ms?: number | null;
 }): Wiki {
 	const db = getDb();
-	const stmt = db.prepare(`
-		INSERT INTO wikis (repo_id, title, description, structure, model, source_type, generation_duration_ms)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING *
-	`);
-	return stmt.get(
-		data.repo_id,
-		data.title,
-		data.description,
-		data.structure,
-		data.model,
-		data.source_type ?? "github",
-		data.generation_duration_ms ?? null,
-	) as Wiki;
+	// Assign the next per-repo version number atomically
+	return db.transaction(() => {
+		const { next } = db
+			.prepare("SELECT COALESCE(MAX(version), 0) + 1 AS next FROM wikis WHERE repo_id = ?")
+			.get(data.repo_id) as { next: number };
+		return db
+			.prepare(
+				`INSERT INTO wikis (repo_id, version, title, description, structure, model, source_type, generation_duration_ms)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				 RETURNING *`,
+			)
+			.get(
+				data.repo_id,
+				next,
+				data.title,
+				data.description,
+				data.structure,
+				data.model,
+				data.source_type ?? "github",
+				data.generation_duration_ms ?? null,
+			) as Wiki;
+	})();
 }
 
 export function getWikiById(id: number): Wiki | undefined {
@@ -49,6 +57,32 @@ export function getWikiByOwnerRepo(owner: string, repo: string): Wiki | undefine
 			 ORDER BY w.created_at DESC LIMIT 1`,
 		)
 		.get(owner, repo) as Wiki | undefined;
+}
+
+/** Look up a specific version of a wiki scoped to owner/repo (prevents cross-repo leaks). */
+export function getWikiByOwnerRepoVersion(
+	owner: string,
+	repo: string,
+	version: number,
+): Wiki | undefined {
+	const db = getDb();
+	return db
+		.prepare(
+			`SELECT w.* FROM wikis w
+			 INNER JOIN repos r ON r.id = w.repo_id
+			 WHERE r.owner = ? AND r.name = ? AND w.version = ?`,
+		)
+		.get(owner, repo, version) as Wiki | undefined;
+}
+
+/** Return the most recent completed wiki for a repo (used for duplicate-generation check). */
+export function getCompletedWikiByRepo(repoId: number): Wiki | undefined {
+	const db = getDb();
+	return db
+		.prepare(
+			"SELECT * FROM wikis WHERE repo_id = ? AND status = 'completed' ORDER BY version DESC LIMIT 1",
+		)
+		.get(repoId) as Wiki | undefined;
 }
 
 export function getWikisByOwnerRepo(

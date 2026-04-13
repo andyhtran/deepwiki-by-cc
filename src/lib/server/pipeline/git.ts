@@ -233,6 +233,7 @@ export function getDiffSinceCommit(
 	files: { path: string }[];
 	diff: string;
 	commitCount: number;
+	commitLog: string;
 } {
 	if (!GIT_SHA_RE.test(fromSha)) {
 		throw new Error(`Invalid git SHA: ${fromSha}`);
@@ -261,5 +262,17 @@ export function getDiffSinceCommit(
 
 	const commitCount = parseInt(countRaw, 10) || 0;
 
-	return { files, diff, commitCount };
+	// Grab one-line commit messages so the sync prompt includes human-authored intent
+	const commitLog = execFileSync(
+		"git",
+		["log", "--oneline", "--no-merges", "-n", "20", `${fromSha}..HEAD`],
+		{
+			cwd: clonePath,
+			encoding: "utf-8",
+			maxBuffer: 1024 * 1024,
+			timeout: 10_000,
+		},
+	).trim();
+
+	return { files, diff, commitCount, commitLog };
 }
