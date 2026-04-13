@@ -37,7 +37,8 @@ async function handleRegenerate() {
 		const res = await fetch("/api/generate", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ repoUrl: url }),
+			// force: true skips the duplicate-wiki check — the user explicitly clicked "Regenerate"
+			body: JSON.stringify({ repoUrl: url, force: true }),
 		});
 		const result = await res.json();
 		if (result.jobId) {
@@ -124,12 +125,16 @@ function formatRelativeTime(dateStr: string): string {
 			{#if data.versions && data.versions.length > 1}
 				<div class="version-selector">
 					<select onchange={(e) => {
-						const vid = (e.target as HTMLSelectElement).value;
-						window.location.href = `/${data.owner}/${data.repo}?v=${vid}`;
+						const ver = (e.target as HTMLSelectElement).value;
+						// Clean URL for the latest version (first in list), ?v= only for older ones
+						const isLatest = ver === String(data.versions[0]?.version);
+						window.location.href = isLatest
+							? `/${data.owner}/${data.repo}`
+							: `/${data.owner}/${data.repo}?v=${ver}`;
 					}}>
 						{#each data.versions as version}
-							<option value={version.id} selected={version.id === data.currentVersionId}>
-								{new Date(version.created_at).toLocaleDateString()} — {version.model} ({version.page_count} pages)
+							<option value={version.version} selected={version.version === data.currentVersion}>
+								v{version.version} — {version.model} — {new Date(version.created_at).toLocaleDateString()} ({version.page_count} pages)
 							</option>
 						{/each}
 					</select>

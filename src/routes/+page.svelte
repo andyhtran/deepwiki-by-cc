@@ -5,6 +5,7 @@ import type { PageData } from "./$types.js";
 
 interface WikiItem {
 	id: number;
+	version: number;
 	owner: string;
 	repo_name: string;
 	status: string;
@@ -63,7 +64,10 @@ async function deleteWiki(id: number, name: string) {
 }
 
 function getWikiLink(wiki: WikiItem): string {
-	return `/${wiki.owner}/${wiki.repo_name}?v=${wiki.id}`;
+	// Clean URL for the latest version; only add ?v= for older versions.
+	// The homepage list is sorted by updated_at DESC, so the first entry per repo
+	// is always the latest — link to the clean URL and let the detail page resolve it.
+	return `/${wiki.owner}/${wiki.repo_name}`;
 }
 
 function getWikiDisplayName(wiki: WikiItem): string {

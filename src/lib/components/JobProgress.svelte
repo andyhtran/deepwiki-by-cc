@@ -49,6 +49,12 @@ $effect(() => {
 <div class="progress-container">
 	{#if error}
 		<div class="error-box">
+			<div class="job-header">
+				{#if repoName}
+					<span class="repo-name">{repoName}</span>
+				{/if}
+				<span class="status-badge failed">Failed</span>
+			</div>
 			<p class="error-message">{error}</p>
 			<button onclick={() => window.location.reload()}>Retry</button>
 		</div>
@@ -161,6 +167,11 @@ $effect(() => {
 		50% { opacity: 0.5; }
 	}
 
+	.status-badge.failed {
+		background: var(--color-danger-subtle);
+		color: var(--color-danger-fg);
+	}
+
 	.error-box {
 		text-align: center;
 	}
@@ -168,6 +179,11 @@ $effect(() => {
 	.error-message {
 		color: var(--color-danger-fg);
 		margin-bottom: 1rem;
+		background: var(--color-danger-subtle);
+		padding: 0.75rem 1rem;
+		border-radius: 6px;
+		font-size: 0.9rem;
+		text-align: left;
 	}
 
 	.error-box button {

@@ -6,6 +6,10 @@ RUN npm install
 
 COPY . .
 RUN npx vite build
+# Bundle MCP server into a single JS file for Node.js in the final image.
+# better-sqlite3 is external because it has native bindings that can't be bundled.
+RUN npx esbuild src/mcp/server.ts --bundle --platform=node --outfile=build/mcp/server.js \
+    --external:better-sqlite3 --format=esm
 RUN rm -rf node_modules && npm install --omit=dev
 
 FROM node:22-slim
@@ -35,8 +39,13 @@ COPY --from=build --chown=deepwiki:deepwiki /app/node_modules ./node_modules
 COPY --from=build --chown=deepwiki:deepwiki /app/package.json ./
 COPY --from=build --chown=deepwiki:deepwiki /app/src/lib/server/db/schema.sql ./build/server/chunks/schema.sql
 
+COPY --chown=deepwiki:deepwiki docker/claude-settings.json /opt/claude-defaults/settings.json
+COPY --chown=deepwiki:deepwiki docker/entrypoint.sh /opt/claude-defaults/entrypoint.sh
+
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
+EXPOSE 3001
 
+ENTRYPOINT ["/opt/claude-defaults/entrypoint.sh"]
 CMD ["node", "build/index.js"]

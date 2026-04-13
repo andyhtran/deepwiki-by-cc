@@ -18,7 +18,8 @@
 		"check": "svelte-kit sync 2>/dev/null; zvelte-check --tsconfig ./tsconfig.json",
 		"test": "bun test",
 		"lint": "biome check .",
-		"mcp": "bun src/mcp/server.ts"
+		"mcp": "bun src/mcp/server.ts",
+		"mcp:http": "MCP_HTTP=true bun src/mcp/server.ts"
 	},
 	"comments": {
 		"@typescript/native-preview": "zvelte-check shells out to the tsgo binary this package provides — do not remove"

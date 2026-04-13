@@ -1,15 +1,21 @@
 // Redirect console.log to stderr — MCP uses stdout for JSON-RPC protocol.
 console.log = (...args: unknown[]) => console.error(...args);
 
-import { Database } from "bun:sqlite";
+import { createServer } from "node:http";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
-// Resolve DB path relative to this script, not cwd — so it works from any project.
-const projectRoot = join(import.meta.dir, "../..");
-const dbPath = join(projectRoot, "data", "deepwiki.db");
+// Resolve DB path: env override, or relative to this script (works from any cwd).
+const scriptDir = typeof import.meta.dirname === "string"
+	? import.meta.dirname
+	: join(fileURLToPath(import.meta.url), "..");
+const projectRoot = join(scriptDir, "../..");
+const dbPath = process.env.DB_PATH || join(projectRoot, "data", "deepwiki.db");
 const db = new Database(dbPath, { readonly: true });
 db.exec("PRAGMA journal_mode = WAL");
 
@@ -35,28 +41,28 @@ function getWikiId(owner: string, repo: string): number | null {
 	// Try exact match first, then fall back to repo-name-only match.
 	// Agents often guess the wrong owner (e.g. "andyhtran" instead of "local").
 	const row = db
-		.query(
+		.prepare(
 			`SELECT w.id FROM wikis w
 			 JOIN repos r ON r.id = w.repo_id
 			 WHERE r.owner = ?1 AND r.name = ?2 AND w.status = 'completed'
 			 ORDER BY w.updated_at DESC LIMIT 1`,
 		)
-		.get(owner, repo) as { id: number } | null;
+		.get(owner, repo) as { id: number } | undefined;
 	if (row) return row.id;
 
 	const fuzzy = db
-		.query(
+		.prepare(
 			`SELECT w.id FROM wikis w
 			 JOIN repos r ON r.id = w.repo_id
 			 WHERE LOWER(r.name) = LOWER(?1) AND w.status = 'completed'
 			 ORDER BY w.updated_at DESC LIMIT 1`,
 		)
-		.get(repo) as { id: number } | null;
+		.get(repo) as { id: number } | undefined;
 	if (fuzzy) return fuzzy.id;
 
 	// If exactly one completed wiki exists, return it regardless of owner/repo.
 	// Handles the common single-wiki deployment where agents guess wrong identifiers.
-	const allWikis = db.query("SELECT w.id FROM wikis w WHERE w.status = 'completed'").all() as {
+	const allWikis = db.prepare("SELECT w.id FROM wikis w WHERE w.status = 'completed'").all() as {
 		id: number;
 	}[];
 	if (allWikis.length === 1) return allWikis[0].id;
@@ -66,7 +72,7 @@ function getWikiId(owner: string, repo: string): number | null {
 
 function getAvailableWikis(): string[] {
 	const rows = db
-		.query(
+		.prepare(
 			`SELECT DISTINCT r.owner, r.name FROM wikis w
 			 JOIN repos r ON r.id = w.repo_id
 			 WHERE w.status = 'completed' ORDER BY r.owner, r.name`,
@@ -106,10 +112,19 @@ function scoreMatch(words: string[], title: string, content: string | null): num
 	return score;
 }
 
-const server = new McpServer({
-	name: "deepwiki",
-	version: "1.0.0",
-});
+// Creates a fully configured McpServer instance. In HTTP stateless mode the SDK
+// requires a fresh transport (and therefore server) per request — this factory
+// avoids duplicating the tool registration code.
+function createMcpServer(): McpServer {
+	const server = new McpServer({
+		name: "deepwiki",
+		version: "1.0.0",
+	});
+	registerTools(server);
+	return server;
+}
+
+function registerTools(server: McpServer): void {
 
 server.registerTool(
 	"list_wikis",
@@ -121,7 +136,7 @@ server.registerTool(
 	},
 	async () => {
 		const wikis = db
-			.query(
+			.prepare(
 				`SELECT w.id, w.title, w.description, w.structure, w.status, r.owner, r.name as repo_name,
 				(SELECT COUNT(*) FROM wiki_pages wp WHERE wp.wiki_id = w.id) as page_count
 			 FROM wikis w
@@ -143,7 +158,7 @@ server.registerTool(
 					id: s.id,
 					title: s.title,
 					description: s.description || "",
-					pages: s.pages.map((p) => ({
+					pages: s.pages.map((p: { id: string; title: string; description?: string }) => ({
 						id: p.id,
 						title: p.title,
 						description: p.description || "",
@@ -189,13 +204,13 @@ server.registerTool(
 			};
 		}
 		const page = db
-			.query(
+			.prepare(
 				"SELECT page_id, title, content, file_paths FROM wiki_pages WHERE wiki_id = ?1 AND page_id = ?2",
 			)
-			.get(wikiId, pageId) as PageRow | null;
+			.get(wikiId, pageId) as PageRow | undefined;
 
 		if (!page) {
-			const pages = db.query("SELECT page_id FROM wiki_pages WHERE wiki_id = ?1").all(wikiId) as {
+			const pages = db.prepare("SELECT page_id FROM wiki_pages WHERE wiki_id = ?1").all(wikiId) as {
 				page_id: string;
 			}[];
 			const available = pages.map((p) => p.page_id).join(", ");
@@ -241,14 +256,14 @@ server.registerTool(
 			};
 		}
 		const pages = db
-			.query(
+			.prepare(
 				"SELECT page_id, title, content, file_paths FROM wiki_pages WHERE wiki_id = ?1 AND parent_id = ?2 ORDER BY sort_order",
 			)
 			.all(wikiId, sectionId) as PageRow[];
 
 		if (pages.length === 0) {
 			const sections = db
-				.query("SELECT DISTINCT parent_id FROM wiki_pages WHERE wiki_id = ?1 ORDER BY parent_id")
+				.prepare("SELECT DISTINCT parent_id FROM wiki_pages WHERE wiki_id = ?1 ORDER BY parent_id")
 				.all(wikiId) as { parent_id: string }[];
 			const available = sections.map((s) => s.parent_id).join(", ");
 			return {
@@ -301,7 +316,7 @@ server.registerTool(
 		}
 
 		const pages = db
-			.query("SELECT page_id, title, content FROM wiki_pages WHERE wiki_id = ?1")
+			.prepare("SELECT page_id, title, content FROM wiki_pages WHERE wiki_id = ?1")
 			.all(wikiId) as PageRow[];
 
 		const words = trimmedQuery
@@ -366,6 +381,39 @@ server.registerTool(
 	},
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("deepwiki MCP server running on stdio");
+} // end registerTools
+
+if (process.env.MCP_HTTP === "true") {
+	// HTTP mode — Streamable HTTP on /mcp for Docker / network access.
+	// The SDK requires a fresh transport per request in stateless mode,
+	// so we also create a fresh McpServer per request to avoid connect() conflicts.
+	const port = Number(process.env.MCP_PORT) || 3001;
+	const httpServer = createServer(async (req, res) => {
+		const url = new URL(req.url || "", `http://localhost:${port}`);
+
+		if (url.pathname === "/mcp") {
+			const server = createMcpServer();
+			const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+			await server.connect(transport);
+			await transport.handleRequest(req, res);
+			// Clean up ephemeral instances once the response finishes to prevent leaks
+			res.on("close", () => {
+				transport.close();
+				server.close();
+			});
+		} else if (url.pathname === "/health") {
+			res.writeHead(200).end("ok");
+		} else {
+			res.writeHead(404).end("Not found");
+		}
+	});
+	httpServer.listen(port, () => {
+		console.error(`deepwiki MCP server running on http://0.0.0.0:${port}/mcp`);
+	});
+} else {
+	// Stdio mode — default for local dev (bun run mcp)
+	const server = createMcpServer();
+	const transport = new StdioServerTransport();
+	await server.connect(transport);
+	console.error("deepwiki MCP server running on stdio");
+}

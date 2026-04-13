@@ -347,12 +347,18 @@ export async function handleSync(
 	const { buildOutlineSummary } = await import("../ai/generator.js");
 	const outlineSummary = buildOutlineSummary(wikiOutline);
 
+	// Include commit messages so the update prompt has semantic context about what changed
+	const fileSummary = `${changedFiles.length} files changed across ${diffResult.commitCount} commits`;
+	const changeDescription = diffResult.commitLog
+		? `${fileSummary}\n\nRecent commits:\n${diffResult.commitLog}`
+		: fileSummary;
+
 	const result = await updateAffectedPages(
 		repo.id,
 		wiki,
 		changedFiles,
 		changeTitle,
-		`${changedFiles.length} files changed across ${diffResult.commitCount} commits`,
+		changeDescription,
 		diffResult.diff,
 		`${owner}/${repoName}`,
 		outlineSummary,
