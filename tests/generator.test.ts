@@ -21,6 +21,11 @@ describe("calculateCost", () => {
 		expect(cost).toBe(0);
 	});
 
+	test("returns 0 for non-priced codex model", () => {
+		const cost = calculateCost("codex-gpt-5-3-xhigh", 1000, 1000);
+		expect(cost).toBe(0);
+	});
+
 	test("handles zero tokens", () => {
 		const cost = calculateCost("claude-sonnet-4-6", 0, 0);
 		expect(cost).toBe(0);

@@ -134,7 +134,7 @@ function formatRelativeTime(dateStr: string): string {
 					}}>
 						{#each data.versions as version}
 							<option value={version.version} selected={version.version === data.currentVersion}>
-								v{version.version} — {version.model} — {new Date(version.created_at).toLocaleDateString()} ({version.page_count} pages)
+								v{version.version} — {version.model} — {new Date(version.created_at).toLocaleDateString()} ({version.page_count} pages){version.embedding_enabled ? ' · emb' : ''}
 							</option>
 						{/each}
 					</select>
@@ -158,6 +158,11 @@ function formatRelativeTime(dateStr: string): string {
 							${data.jobStats.totalCost.toFixed(2)}
 						</span>
 					{/if}
+				</div>
+			{/if}
+			{#if data.embeddingInfo}
+				<div class="embedding-badge" title="Embeddings: {data.embeddingInfo.model}{data.embeddingInfo.fingerprint ? ` (${data.embeddingInfo.fingerprint})` : ''}">
+					Embeddings: {data.embeddingInfo.model}{#if data.embeddingInfo.fingerprint} <span class="fingerprint">({data.embeddingInfo.fingerprint})</span>{/if}
 				</div>
 			{/if}
 			{#if data.lastIndexedSha}
@@ -337,6 +342,20 @@ function formatRelativeTime(dateStr: string): string {
 	.sync-btn:hover:not(:disabled) {
 		background: var(--color-accent-emphasis);
 		color: #fff;
+	}
+
+	.embedding-badge {
+		font-size: 0.7rem;
+		color: var(--color-fg-muted);
+		margin-top: 0.5rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.embedding-badge .fingerprint {
+		opacity: 0.6;
+		font-family: monospace;
 	}
 
 	.last-indexed {
