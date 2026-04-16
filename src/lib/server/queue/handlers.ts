@@ -45,6 +45,19 @@ import { buildFileTree, scanRepository } from "../pipeline/scanner.js";
 
 type ProgressFn = (progress: number, message: string) => void;
 
+/** Thrown when a job is cancelled mid-flight via the abort signal. */
+class JobCancelledError extends Error {
+	constructor() {
+		super("Job cancelled");
+		this.name = "JobCancelledError";
+	}
+}
+
+/** Throws if the signal has been aborted (i.e. the job was cancelled). */
+function throwIfCancelled(signal?: AbortSignal): void {
+	if (signal?.aborted) throw new JobCancelledError();
+}
+
 function accumulateUsage(
 	totals: { promptTokens: number; completionTokens: number; cost: number },
 	usage: GenerationUsage,
@@ -68,6 +81,7 @@ function buildEmbeddingSnapshot(embeddings: EffectiveEmbeddingConfig): Embedding
 export async function handleFullGeneration(
 	job: Job,
 	progress: ProgressFn,
+	signal?: AbortSignal,
 ): Promise<{
 	promptTokens: number;
 	completionTokens: number;
@@ -275,6 +289,8 @@ export async function handleFullGeneration(
 	await Promise.all(
 		allPages.map(({ page, sectionTitle }) =>
 			limit(async () => {
+				throwIfCancelled(signal);
+
 				const wikiPage = wikiPageMap.get(page.id);
 				if (!wikiPage) return;
 
@@ -342,6 +358,7 @@ export async function handleFullGeneration(
 export async function handleSync(
 	job: Job,
 	progress: ProgressFn,
+	signal?: AbortSignal,
 ): Promise<{
 	promptTokens: number;
 	completionTokens: number;
@@ -425,6 +442,7 @@ export async function handleSync(
 		effective.parallelPageLimit,
 		totals,
 		progress,
+		signal,
 	);
 
 	updateRepo(repo.id, { clone_path: clonePath, last_commit_sha: commitSha });
@@ -497,6 +515,7 @@ async function updateAffectedPages(
 		cost: number;
 	},
 	progress: ProgressFn,
+	signal?: AbortSignal,
 ): Promise<typeof totals> {
 	progress(60, "Identifying affected wiki pages...");
 	const wikiPages = getWikiPages(wiki.id);
@@ -524,6 +543,8 @@ async function updateAffectedPages(
 	await Promise.all(
 		allAffected.map((page) =>
 			limit(async () => {
+				throwIfCancelled(signal);
+
 				if (!page.content) {
 					completedCount++;
 					return;
@@ -595,6 +616,7 @@ async function updateAffectedPages(
 export async function handleResumeGeneration(
 	job: Job,
 	progress: ProgressFn,
+	signal?: AbortSignal,
 ): Promise<{
 	promptTokens: number;
 	completionTokens: number;
@@ -660,6 +682,8 @@ export async function handleResumeGeneration(
 	await Promise.all(
 		pagesToRetry.map(({ page, sectionTitle }) =>
 			limit(async () => {
+				throwIfCancelled(signal);
+
 				const wikiPage = allWikiPages.find((wp) => wp.page_id === page.id);
 				if (!wikiPage) return;
 

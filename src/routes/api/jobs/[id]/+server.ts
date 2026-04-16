@@ -1,5 +1,23 @@
+import { json } from "@sveltejs/kit";
 import { getJob } from "$lib/server/db/jobs.js";
+import { requestJobCancellation } from "$lib/server/queue/worker.js";
 import type { RequestHandler } from "./$types.js";
+
+export const DELETE: RequestHandler = async ({ params }) => {
+	const jobId = Number.parseInt(params.id, 10);
+	if (Number.isNaN(jobId)) {
+		return new Response("Invalid job ID", { status: 400 });
+	}
+
+	const cancelled = requestJobCancellation(jobId);
+	if (!cancelled) {
+		const job = getJob(jobId);
+		if (!job) return new Response("Job not found", { status: 404 });
+		return json({ message: "Job is not cancellable", status: job.status }, { status: 409 });
+	}
+
+	return json({ message: "Job cancelled" });
+};
 
 export const GET: RequestHandler = async ({ params }) => {
 	const jobId = Number.parseInt(params.id, 10);
@@ -12,11 +30,13 @@ export const GET: RequestHandler = async ({ params }) => {
 		return new Response("Job not found", { status: 404 });
 	}
 
-	if (job.status === "completed" || job.status === "failed") {
+	if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+		const statusMessage =
+			job.status === "failed" ? job.error_message : job.status === "cancelled" ? "Cancelled" : "Completed";
 		const data = JSON.stringify({
 			status: job.status,
 			progress: job.progress,
-			message: job.status === "failed" ? job.error_message : "Completed",
+			message: statusMessage,
 		});
 
 		return new Response(`data: ${data}\n\n`, {
@@ -73,12 +93,19 @@ export const GET: RequestHandler = async ({ params }) => {
 						);
 					}
 
-					if (current.status === "completed" || current.status === "failed") {
+					if (
+						current.status === "completed" ||
+						current.status === "failed" ||
+						current.status === "cancelled"
+					) {
 						if (cp !== 100 && current.status === "completed") {
 							send("completed", 100, "Completed");
 						}
 						if (current.status === "failed" && cm !== current.error_message) {
 							send("failed", cp, current.error_message ?? "Failed");
+						}
+						if (current.status === "cancelled") {
+							send("cancelled", cp, "Cancelled");
 						}
 						clearInterval(pollInterval);
 						setTimeout(() => {

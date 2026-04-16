@@ -1,14 +1,13 @@
 services:
   deepwiki:
     build: .
-    ports:
-      - "8080:8080"
-      - "3001:3001"
+    network_mode: host
     environment:
       - MCP_HTTP=true
     volumes:
       - data:/home/deepwiki/app/data
       - claude-config:/home/deepwiki/.claude
+      - codex-config:/home/deepwiki/.codex
     env_file:
       - .env.docker
     restart: unless-stopped
@@ -16,3 +15,4 @@ services:
 volumes:
   data:
   claude-config:
+  codex-config:

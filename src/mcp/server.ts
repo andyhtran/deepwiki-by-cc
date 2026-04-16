@@ -682,8 +682,11 @@ if (process.env.MCP_HTTP === "true") {
 			res.writeHead(404).end("Not found");
 		}
 	});
-	httpServer.listen(port, () => {
-		console.error(`deepwiki MCP server running on http://0.0.0.0:${port}/mcp`);
+	// Bind to localhost only — in host-network mode, binding to 0.0.0.0
+	// conflicts with Tailscale serve which already forwards the public port.
+	const host = process.env.MCP_HOST || "127.0.0.1";
+	httpServer.listen(port, host, () => {
+		console.error(`deepwiki MCP server running on http://${host}:${port}/mcp`);
 	});
 } else {
 	// Stdio mode — default for local dev (bun run mcp)

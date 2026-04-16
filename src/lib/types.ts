@@ -62,7 +62,7 @@ export interface Job {
 	repo_id: number | null;
 	wiki_id: number | null;
 	params: string | null;
-	status: "pending" | "processing" | "completed" | "failed";
+	status: "pending" | "processing" | "completed" | "failed" | "cancelled";
 	progress: number;
 	progress_message: string | null;
 	error_message: string | null;
