@@ -72,6 +72,8 @@ describe("schema", () => {
 		const names = tables.map((t) => t.name);
 		expect(names).toContain("repos");
 		expect(names).toContain("documents");
+		expect(names).toContain("document_chunks");
+		expect(names).toContain("chunk_embeddings");
 		expect(names).toContain("wikis");
 		expect(names).toContain("wiki_pages");
 		expect(names).toContain("jobs");
@@ -83,6 +85,8 @@ describe("schema", () => {
 			.all() as { name: string }[];
 		const names = indexes.map((i) => i.name);
 		expect(names).toContain("idx_documents_repo");
+		expect(names).toContain("idx_document_chunks_repo_path");
+		expect(names).toContain("idx_chunk_embeddings_repo_model_endpoint");
 		expect(names).toContain("idx_jobs_status");
 	});
 });

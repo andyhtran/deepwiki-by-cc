@@ -28,9 +28,24 @@ export function getDb(): Database.Database {
 		db.exec(`${stmt};`);
 	}
 
+	// Incremental migrations for columns added after initial schema
+	runMigrations(db);
+
+	_db = db;
+	return db;
+}
+
+function runMigrations(db: Database.Database): void {
+	// Migration: add token_count column to document_chunks (added for token-aware chunking)
+	const chunkCols = db.pragma("table_info(document_chunks)") as { name: string }[];
+	if (!chunkCols.some((c) => c.name === "token_count")) {
+		db.exec("ALTER TABLE document_chunks ADD COLUMN token_count INTEGER");
+	}
+
 	// Migration: add version column to wikis and backfill with per-repo sequence numbers
-	const cols = db.prepare("PRAGMA table_info(wikis)").all() as { name: string }[];
-	if (!cols.some((c) => c.name === "version")) {
+	const wikiCols = db.pragma("table_info(wikis)") as { name: string }[];
+	const wikiColNames = new Set(wikiCols.map((c) => c.name));
+	if (!wikiColNames.has("version")) {
 		db.exec("ALTER TABLE wikis ADD COLUMN version INTEGER");
 		db.exec(`
 			UPDATE wikis SET version = (
@@ -42,6 +57,14 @@ export function getDb(): Database.Database {
 		`);
 	}
 
-	_db = db;
-	return db;
+	// Migration: add embedding snapshot columns to wikis
+	if (!wikiColNames.has("embedding_enabled")) {
+		db.exec("ALTER TABLE wikis ADD COLUMN embedding_enabled INTEGER NOT NULL DEFAULT 0");
+	}
+	if (!wikiColNames.has("embedding_model")) {
+		db.exec("ALTER TABLE wikis ADD COLUMN embedding_model TEXT");
+	}
+	if (!wikiColNames.has("embedding_endpoint_fingerprint")) {
+		db.exec("ALTER TABLE wikis ADD COLUMN embedding_endpoint_fingerprint TEXT");
+	}
 }

@@ -66,14 +66,15 @@ export const load: PageServerLoad = async ({ params, url }) => {
 				| undefined)
 		: undefined;
 
+	// Fetch the completed job for this specific wiki version (not just latest by repo)
 	const job = db
 		.prepare(
 			`SELECT * FROM jobs
-			 WHERE repo_id = (SELECT id FROM repos WHERE owner = ? AND name = ?)
+			 WHERE wiki_id = ?
 			   AND status = 'completed'
 			 ORDER BY completed_at DESC LIMIT 1`,
 		)
-		.get(params.owner, params.repo) as Job | undefined;
+		.get(wiki.id) as Job | undefined;
 
 	return {
 		wiki: {
@@ -94,12 +95,20 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			status: v.status,
 			page_count: v.page_count,
 			created_at: v.created_at,
+			embedding_enabled: v.embedding_enabled,
+			embedding_model: v.embedding_model,
 		})),
 		currentVersion: wiki.version,
 		activeJobId,
 		defaultBranch: repo?.default_branch ?? "main",
 		lastIndexedSha: repo?.last_commit_sha ?? null,
 		lastIndexedAt: repo?.updated_at ?? null,
+		embeddingInfo: wiki.embedding_enabled
+			? {
+					model: wiki.embedding_model,
+					fingerprint: wiki.embedding_endpoint_fingerprint?.slice(-8) ?? null,
+				}
+			: null,
 		jobStats: job
 			? {
 					totalPromptTokens: job.total_prompt_tokens,

@@ -21,9 +21,19 @@ export interface Wiki {
 	model: string;
 	source_type: "github" | "local";
 	generation_duration_ms: number | null;
+	embedding_enabled: number;
+	embedding_model: string | null;
+	embedding_endpoint_fingerprint: string | null;
 	status: "generating" | "completed" | "failed";
 	created_at: string;
 	updated_at: string;
+}
+
+/** Compact snapshot of embedding config at job creation time */
+export interface EmbeddingSnapshot {
+	enabled: boolean;
+	model: string | null;
+	endpointFingerprint: string | null;
 }
 
 export interface WikiPage {

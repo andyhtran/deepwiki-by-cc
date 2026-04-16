@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { CLAUDE_MODELS } from "$lib/server/config.js";
+import { isGenerationModel } from "$lib/server/config.js";
 import { setSetting } from "$lib/server/db/settings.js";
 import type { RequestHandler } from "./$types.js";
 
@@ -8,7 +8,7 @@ export const PUT: RequestHandler = async ({ request }) => {
 
 	if ("generationModel" in body) {
 		const value = body.generationModel as string;
-		if (value && value in CLAUDE_MODELS) {
+		if (isGenerationModel(value)) {
 			setSetting("generationModel", value);
 		}
 	}

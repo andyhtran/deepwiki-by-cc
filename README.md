@@ -1,13 +1,14 @@
 # DeepWiki
 
-Generate comprehensive, navigable wikis for any GitHub repository or local codebase using Claude AI.
+Generate comprehensive, navigable wikis for any GitHub repository or local codebase using Claude or Codex.
 
 Point DeepWiki at a repo and it will clone it, scan the source files, generate a structured outline and per-page documentation with Mermaid diagrams, and serve the result as a browsable wiki — all in a few minutes.
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) runtime
-- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`claude` must be on your PATH)
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`claude` must be on your PATH) when using Claude models
+- [Codex CLI](https://developers.openai.com/codex/cli/) installed and authenticated (`codex` must be on your PATH) when using the Codex model
 - [Git](https://git-scm.com) and [GitHub CLI](https://cli.github.com) (`gh`) for cloning GitHub repos
 
 ## Quick Start
@@ -34,15 +35,19 @@ You can also point DeepWiki at a local directory:
 ## How It Works
 
 1. **Clone & scan** — clones the repo (or reads a local directory), walks the file tree while respecting `.gitignore`, and filters out binaries, lock files, generated code, and minified bundles.
-2. **Generate outline** — sends the file tree and README to Claude, which returns a structured wiki outline with sections, pages, and file assignments.
+2. **Generate outline** — sends the file tree and README to the selected generation model, which returns a structured wiki outline with sections, pages, and file assignments.
 3. **Generate pages** — each page is generated in parallel (configurable concurrency), with relevant source files injected as context. Mermaid diagrams are included where they help explain architecture or flow.
 4. **Serve** — the wiki is stored in SQLite and served through a SvelteKit app with syntax highlighting, Mermaid rendering, a sidebar navigation tree, and a table of contents.
 
 ### Keeping wikis up to date
 
-- **Sync** — pulls latest commits and selectively regenerates only the pages affected by the diff.
+- **Sync** — pulls latest commits and selectively regenerates only the pages affected by the diff. Page metadata (model, tokens, timing) is updated even when content doesn't change.
 - **Resume** — if generation is interrupted or individual pages fail, resume picks up where it left off.
 - **Regenerate** — full regeneration from scratch.
+
+### Version metadata
+
+Each wiki version records the generation model and embedding configuration that was active at creation time. When embeddings are enabled, the wiki stores the embedding model name and an endpoint fingerprint so that different embedding providers don't cross-contaminate search results. The version selector in the sidebar shows per-version stats and an "emb" indicator for embedding-enabled versions.
 
 ## Settings
 
@@ -50,8 +55,34 @@ Visit `/settings` in the UI to configure:
 
 | Setting | Default | Options |
 |---------|---------|---------|
-| Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6 |
+| Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6, Codex GPT-5.3 (xhigh reasoning) |
 | Parallel page limit | 2 | 1–5 |
+| Embeddings retrieval | Disabled | Optional OpenAI-compatible endpoint + model |
+
+When Codex is selected, DeepWiki uses `codex exec` with a fixed model (`gpt-5.3-codex`) and fixed reasoning effort (`xhigh`).
+
+When embeddings are enabled, DeepWiki indexes file chunks in SQLite and retrieves top semantic chunks for page generation context. Configure the embedding endpoint as a full URL (for example, `https://api.openai.com/v1/embeddings` or your proxy equivalent). Advanced retrieval/chunking controls stay collapsed in the UI and default to a low-touch profile (`topK=10`, `maxContextChars=16000`, `chunkSize=1200`, `chunkOverlap=200`). If embedding retrieval fails, it falls back to full-file context injection.
+
+### Retrieval Modes
+
+DeepWiki uses different retrieval strategies depending on the surface:
+
+| Surface | Default Mode | Top K | Max Context Chars | Description |
+|---------|-------------|-------|-------------------|-------------|
+| Generation | `constrained` | 10 | 16,000 | File-scoped retrieval using the page's assigned file paths |
+| MCP/Chat | `hybrid_auto` | 20 | 32,000 | Tries constrained first, falls back to global if results look weak |
+
+In `hybrid_auto` mode, constrained retrieval runs first. If the results are detected as weak (too few chunks, low similarity scores, or flat score distribution), DeepWiki automatically falls back to a global search across all indexed chunks in the repository, then merges and deduplicates the results.
+
+**Weakness detection thresholds** (configurable in Settings > Advanced):
+- Min chunks: 3 — triggers fallback if fewer chunks returned
+- Min context chars: 4,000 — triggers if total context is too short
+- Min top score: 0.3 — triggers if best match similarity is low
+- Min score gap: 0.05 — triggers if scores are too flat (no clear winner)
+
+**Token-aware chunking**: Chunks can be sized by token count instead of characters. When enabled (`tokenAware: true`), the chunker targets 700 tokens per chunk with 120 tokens of overlap, using the `cl100k_base` tokenizer.
+
+**ANN index**: An ANN (approximate nearest neighbor) index manifest is built per repo after embedding indexing. Currently backed by exact cosine scan over all embeddings; the interface is forward-compatible with native ANN backends (HNSW, etc.) for larger repos.
 
 ## MCP Server
 
@@ -92,6 +123,7 @@ bun run mcp:http   # starts on port 3001 (override with MCP_PORT)
 | `get_wiki_page` | Get the full markdown content of a single page |
 | `get_section_pages` | Get all pages in a section at once |
 | `search_wiki` | Keyword search across wiki content |
+| `search_wiki_semantic` | Semantic (embedding-based) search with lexical fallback |
 
 ## Self-Hosting with Docker
 
@@ -105,7 +137,7 @@ The web UI is served on port 8080 and the MCP HTTP server on port 3001.
 
 ### Authenticate Claude CLI (one-time)
 
-The app uses the Claude CLI under the hood. You need to log in once inside the container — credentials are persisted in a Docker volume so you won't need to do this again.
+The app uses model CLIs under the hood (Claude and optional Codex). Log in once inside the container — credentials are persisted in a Docker volume so you won't need to do this again.
 
 ```bash
 docker compose exec deepwiki claude login
@@ -118,6 +150,12 @@ docker compose exec deepwiki claude -p "say hello" --max-turns 1
 ```
 
 If you get a response, DeepWiki is ready at [http://localhost:8080](http://localhost:8080).
+
+If you plan to use the Codex model, authenticate that CLI once as well:
+
+```bash
+docker compose exec deepwiki codex login
+```
 
 ### Private repositories (optional)
 
@@ -137,7 +175,7 @@ docker compose up -d
 
 | | Size |
 |---|---|
-| Docker image | ~825 MB (includes Node.js, Git, GitHub CLI, Claude CLI) |
+| Docker image | ~825 MB (includes Node.js, Git, GitHub CLI, Claude CLI; Codex CLI not bundled) |
 | Memory at idle | ~30 MB |
 | Memory during generation | ~100–200 MB (varies with repo size and page concurrency) |
 
@@ -163,7 +201,7 @@ bun run start     # Start production server (port 8080)
 
 - **Frontend**: SvelteKit 5, Mermaid, highlight.js
 - **Backend**: SvelteKit server routes, SQLite (better-sqlite3), background job queue
-- **AI**: Claude CLI (subprocess with streaming JSON output)
+- **AI**: Claude CLI and Codex CLI (subprocess with streaming JSON output)
 - **MCP**: `@modelcontextprotocol/sdk` with stdio and Streamable HTTP transports
 
 ## License
