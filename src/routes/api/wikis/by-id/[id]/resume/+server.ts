@@ -1,5 +1,7 @@
 import { json } from "@sveltejs/kit";
+import { getEffectiveConfig } from "$lib/server/config.js";
 import { createJob } from "$lib/server/db/jobs.js";
+import { getAllSettings } from "$lib/server/db/settings.js";
 import { getWikiById, getWikiPages } from "$lib/server/db/wikis.js";
 import type { RequestHandler } from "./$types.js";
 
@@ -23,10 +25,12 @@ export const POST: RequestHandler = async ({ params }) => {
 		return json({ error: "No failed pages to resume" }, { status: 400 });
 	}
 
+	const effective = getEffectiveConfig(getAllSettings());
+
 	const job = createJob({
 		type: "resume-generation",
 		repo_id: wiki.repo_id!,
-		params: { wikiId },
+		params: { wikiId, generationModel: effective.generationModel },
 	});
 
 	return json({

@@ -32,6 +32,36 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    chunk_seq INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    offset_start INTEGER NOT NULL,
+    offset_end INTEGER NOT NULL,
+    token_count INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(repo_id, file_path, content_hash, chunk_seq)
+);
+
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chunk_id INTEGER NOT NULL REFERENCES document_chunks(id) ON DELETE CASCADE,
+    repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    embedding TEXT NOT NULL,
+    embedding_dim INTEGER NOT NULL,
+    embedding_model TEXT NOT NULL,
+    endpoint_fingerprint TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(chunk_id, embedding_model, endpoint_fingerprint)
+);
+
 CREATE TABLE IF NOT EXISTS wikis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     repo_id INTEGER REFERENCES repos(id) ON DELETE CASCADE,
@@ -42,6 +72,9 @@ CREATE TABLE IF NOT EXISTS wikis (
     model TEXT NOT NULL,
     source_type TEXT DEFAULT 'github',
     generation_duration_ms INTEGER,
+    embedding_enabled INTEGER NOT NULL DEFAULT 0,
+    embedding_model TEXT,
+    embedding_endpoint_fingerprint TEXT,
     status TEXT DEFAULT 'generating',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
@@ -88,6 +121,10 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS idx_wikis_repo ON wikis(repo_id);
 CREATE INDEX IF NOT EXISTS idx_documents_repo ON documents(repo_id);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_repo_path ON document_chunks(repo_id, file_path);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_repo_hash ON document_chunks(repo_id, file_path, content_hash);
+CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_repo_model_endpoint ON chunk_embeddings(repo_id, embedding_model, endpoint_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_repo_path ON chunk_embeddings(repo_id, file_path);
 CREATE INDEX IF NOT EXISTS idx_wiki_pages_wiki ON wiki_pages(wiki_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_repo ON jobs(repo_id);

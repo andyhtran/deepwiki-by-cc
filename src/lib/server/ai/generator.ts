@@ -1,11 +1,11 @@
 import type { WikiOutline, WikiOutlinePage } from "$lib/types.js";
 import { config } from "../config.js";
 import { log } from "../logger.js";
-import { formatFilesForContext, retrieveFileContents } from "../pipeline/retriever.js";
+import { retrieveContextForPrompt } from "../pipeline/retriever.js";
 import { buildOutlinePrompt } from "../prompts/outline.js";
 import { buildPagePrompt } from "../prompts/page.js";
 import { buildUpdatePrompt } from "../prompts/update.js";
-import { invokeClaudeCli } from "./claude-cli.js";
+import { invokeGenerationModel } from "./provider.js";
 
 const PAGE_SCHEMA = {
 	type: "object" as const,
@@ -61,11 +61,11 @@ export async function generateOutline(params: {
 	log.generator.info({ repo: params.repoName, model: modelId }, "generating outline");
 	const prompt = buildOutlinePrompt(params);
 
-	const result = await invokeClaudeCli({
+	const result = await invokeGenerationModel({
 		prompt,
 		systemPrompt:
 			"You are a JSON generator. Output ONLY valid JSON with no prose, no markdown fences, no explanation. Start your response with { and end with }.",
-		model: modelId,
+		modelId,
 		timeoutMs: 10 * 60 * 1000,
 	});
 
@@ -120,8 +120,28 @@ export async function generatePage(params: {
 
 	log.generator.info({ page: params.page.title, model: modelId }, "generating page");
 
-	const files = retrieveFileContents(params.repoId, params.page.filePaths || []);
-	const codeContext = formatFilesForContext(files);
+	const retrievalQuery = [
+		params.sectionTitle,
+		params.page.title,
+		params.page.description,
+		...(params.page.filePaths || []),
+	]
+		.filter((x) => x && x.length > 0)
+		.join("\n");
+
+	const { codeContext, source } = await retrieveContextForPrompt({
+		repoId: params.repoId,
+		filePaths: params.page.filePaths || [],
+		queryText: retrievalQuery,
+	});
+	log.generator.debug(
+		{
+			page: params.page.title,
+			source,
+			fileCount: params.page.filePaths?.length ?? 0,
+		},
+		"resolved page context",
+	);
 
 	const outlineSummary = buildOutlineSummary(params.outline);
 
@@ -135,9 +155,9 @@ export async function generatePage(params: {
 		outline: outlineSummary,
 	});
 
-	const result = await invokeClaudeCli({
+	const result = await invokeGenerationModel({
 		prompt,
-		model: modelId,
+		modelId,
 		jsonSchema: PAGE_SCHEMA,
 	});
 
@@ -163,12 +183,34 @@ export async function generatePageUpdate(params: {
 	pageTitle: string;
 	filePaths: string[];
 	outline: string;
+	generationModel?: string;
 }): Promise<{ content: string | null; usage: GenerationUsage }> {
-	const modelId = config.generationModel;
+	const modelId = params.generationModel || config.generationModel;
 	log.generator.info({ page: params.pageTitle, model: modelId }, "updating page");
 
-	const files = retrieveFileContents(params.repoId, params.filePaths);
-	const updatedCodeContext = formatFilesForContext(files);
+	const retrievalQuery = [
+		params.pageTitle,
+		params.changeTitle,
+		params.changeDescription,
+		params.changeDiff.slice(0, 2000),
+		...params.filePaths,
+	]
+		.filter((x) => x && x.length > 0)
+		.join("\n");
+
+	const { codeContext: updatedCodeContext, source } = await retrieveContextForPrompt({
+		repoId: params.repoId,
+		filePaths: params.filePaths,
+		queryText: retrievalQuery,
+	});
+	log.generator.debug(
+		{
+			page: params.pageTitle,
+			source,
+			fileCount: params.filePaths.length,
+		},
+		"resolved page update context",
+	);
 
 	const prompt = buildUpdatePrompt({
 		repoName: params.repoName,
@@ -181,9 +223,9 @@ export async function generatePageUpdate(params: {
 		outline: params.outline,
 	});
 
-	const result = await invokeClaudeCli({
+	const result = await invokeGenerationModel({
 		prompt,
-		model: modelId,
+		modelId,
 		jsonSchema: UPDATE_SCHEMA,
 	});
 

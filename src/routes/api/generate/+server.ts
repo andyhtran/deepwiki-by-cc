@@ -1,6 +1,8 @@
 import { json } from "@sveltejs/kit";
+import { getEffectiveConfig } from "$lib/server/config.js";
 import { createJob, getActiveJobForRepo } from "$lib/server/db/jobs.js";
 import { getRepoByFullName } from "$lib/server/db/repos.js";
+import { getAllSettings } from "$lib/server/db/settings.js";
 import { getCompletedWikiByRepo } from "$lib/server/db/wikis.js";
 import { parseRepoInput } from "$lib/server/pipeline/git.js";
 import type { RequestHandler } from "./$types.js";
@@ -54,7 +56,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	const params: Record<string, unknown> = { repoUrl };
+	const effective = getEffectiveConfig(getAllSettings());
+	const params: Record<string, unknown> = {
+		repoUrl,
+		generationModel: effective.generationModel,
+	};
 	if (parsed.isLocal) {
 		params.isLocal = true;
 		params.localPath = parsed.localPath;

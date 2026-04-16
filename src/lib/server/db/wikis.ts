@@ -9,6 +9,9 @@ export function createWiki(data: {
 	model: string;
 	source_type?: string;
 	generation_duration_ms?: number | null;
+	embedding_enabled?: number;
+	embedding_model?: string | null;
+	embedding_endpoint_fingerprint?: string | null;
 }): Wiki {
 	const db = getDb();
 	// Assign the next per-repo version number atomically
@@ -18,8 +21,8 @@ export function createWiki(data: {
 			.get(data.repo_id) as { next: number };
 		return db
 			.prepare(
-				`INSERT INTO wikis (repo_id, version, title, description, structure, model, source_type, generation_duration_ms)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				`INSERT INTO wikis (repo_id, version, title, description, structure, model, source_type, generation_duration_ms, embedding_enabled, embedding_model, embedding_endpoint_fingerprint)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				 RETURNING *`,
 			)
 			.get(
@@ -31,6 +34,9 @@ export function createWiki(data: {
 				data.model,
 				data.source_type ?? "github",
 				data.generation_duration_ms ?? null,
+				data.embedding_enabled ?? 0,
+				data.embedding_model ?? null,
+				data.embedding_endpoint_fingerprint ?? null,
 			) as Wiki;
 	})();
 }
@@ -112,6 +118,8 @@ interface WikiListItem extends Wiki {
 
 export function listWikis(): WikiListItem[] {
 	const db = getDb();
+	// Use a subquery to pick only the latest completed job per wiki, avoiding
+	// duplicate rows when multiple completed jobs reference the same wiki_id.
 	return db
 		.prepare(
 			`SELECT w.*, r.owner, r.name as repo_name,
@@ -120,7 +128,11 @@ export function listWikis(): WikiListItem[] {
 				j.total_cost
 			 FROM wikis w
 			 LEFT JOIN repos r ON r.id = w.repo_id
-			 LEFT JOIN jobs j ON j.wiki_id = w.id AND j.status = 'completed'
+			 LEFT JOIN jobs j ON j.id = (
+				SELECT j2.id FROM jobs j2
+				WHERE j2.wiki_id = w.id AND j2.status = 'completed'
+				ORDER BY j2.completed_at DESC LIMIT 1
+			 )
 			 ORDER BY w.updated_at DESC`,
 		)
 		.all() as WikiListItem[];

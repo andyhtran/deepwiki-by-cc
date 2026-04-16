@@ -82,6 +82,11 @@ export function updateJobWikiId(jobId: number, wikiId: number): void {
 	db.prepare("UPDATE jobs SET wiki_id = ? WHERE id = ?").run(wikiId, jobId);
 }
 
+export function updateJobParams(jobId: number, params: Record<string, unknown>): void {
+	const db = getDb();
+	db.prepare("UPDATE jobs SET params = ? WHERE id = ?").run(JSON.stringify(params), jobId);
+}
+
 export function getActiveJobForRepo(repoId: number): Job | undefined {
 	const db = getDb();
 	return db
