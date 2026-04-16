@@ -241,6 +241,15 @@ function formatRelativeTime(dateStr: string): string {
 		flex-direction: column;
 		overflow-y: auto;
 		padding: 1rem 0;
+		/* Stick to the viewport as the page scrolls. `align-self: flex-start`
+		   opts out of the flex parent's default stretch so the sidebar uses
+		   its own 100vh height instead of matching the content column — that
+		   bounded height is what lets `overflow-y: auto` actually scroll the
+		   tree when it's longer than the viewport. */
+		position: sticky;
+		top: 0;
+		height: 100vh;
+		align-self: flex-start;
 	}
 
 	.sidebar-header {
