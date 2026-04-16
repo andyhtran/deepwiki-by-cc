@@ -196,8 +196,13 @@ export function cloneRepo(owner: string, name: string): { clonePath: string; com
 				);
 			}
 			// Sanitize token from error messages before rethrowing
-			const sanitized = new Error(`Failed to clone ${owner}/${name}. Check that the repository exists and is accessible.`);
-			sanitized.stack = err instanceof Error ? err.stack?.replace(/x-access-token:[^@]+@/g, "x-access-token:***@") : undefined;
+			const sanitized = new Error(
+				`Failed to clone ${owner}/${name}. Check that the repository exists and is accessible.`,
+			);
+			sanitized.stack =
+				err instanceof Error
+					? err.stack?.replace(/x-access-token:[^@]+@/g, "x-access-token:***@")
+					: undefined;
 			throw sanitized;
 		}
 	}
