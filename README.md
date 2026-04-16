@@ -4,6 +4,27 @@ Generate comprehensive, navigable wikis for any GitHub repository or local codeb
 
 Point DeepWiki at a repo and it will clone it, scan the source files, generate a structured outline and per-page documentation with Mermaid diagrams, and serve the result as a browsable wiki — all in a few minutes.
 
+![Bun](https://img.shields.io/badge/Bun-1.0+-black?style=flat-square&logo=bun)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![SvelteKit](https://img.shields.io/badge/SvelteKit-2.50-FF3E00?style=flat-square&logo=svelte&logoColor=white)
+![License](https://img.shields.io/github/license/andyhtran/deepwiki-by-cc?style=flat-square)
+![Powered by Claudex](https://img.shields.io/badge/powered%20by-Claudex-8A5CF6?style=flat-square)
+
+[Features](#features) · [Prerequisites](#prerequisites) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [MCP Server](#mcp-server) · [Self-Hosting](#self-hosting-with-docker)
+
+<!-- TODO: add hero screenshot or GIF here -->
+
+## Features
+
+- **Claude or Codex** — pick between Claude Sonnet/Opus or Codex CLI (gpt-5.3-codex) per wiki, with streaming progress and configurable page concurrency.
+- **GitHub or local** — point at `owner/repo`, a full GitHub URL, or any local directory. `.gitignore`-aware scanning that filters out binaries, lock files, and generated code.
+- **Structured output** — AI-generated outline with sections and pages, rendered with Mermaid diagrams, syntax highlighting, sidebar navigation, and a per-page table of contents.
+- **Semantic retrieval** — optional embeddings with hybrid (file-scoped + global fallback) search, token-aware chunking, and a built-in ANN index. Falls back to full-file context if embedding fails.
+- **Versioned wikis** — keep multiple versions per repo, each tagged with the model and embedding config used to generate it. Switch between versions from the sidebar.
+- **Sync & resume** — pull latest commits and selectively regenerate only the pages affected by the diff. Resume picks up where interrupted runs left off.
+- **MCP server** — expose wikis to Claude Code and other MCP agents via stdio or Streamable HTTP transport, with keyword and semantic search tools.
+- **Self-hosted** — one-command Docker setup with persistent credential volumes, private-repo support via `GH_TOKEN`, and ~850 MB image footprint.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) runtime
@@ -55,11 +76,11 @@ Visit `/settings` in the UI to configure:
 
 | Setting | Default | Options |
 |---------|---------|---------|
-| Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6, Codex GPT-5.3 (xhigh reasoning) |
+| Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6, gpt-5.3-codex |
 | Parallel page limit | 2 | 1–5 |
 | Embeddings retrieval | Disabled | Optional OpenAI-compatible endpoint + model |
 
-When Codex is selected, DeepWiki uses `codex exec` with a fixed model (`gpt-5.3-codex`) and fixed reasoning effort (`xhigh`).
+When Codex is selected, DeepWiki uses `codex exec` with a fixed model (`gpt-5.3-codex`).
 
 When embeddings are enabled, DeepWiki indexes file chunks in SQLite and retrieves top semantic chunks for page generation context. Configure the embedding endpoint as a full URL (for example, `https://api.openai.com/v1/embeddings` or your proxy equivalent). Advanced retrieval/chunking controls stay collapsed in the UI and default to a low-touch profile (`topK=10`, `maxContextChars=16000`, `chunkSize=1200`, `chunkOverlap=200`). If embedding retrieval fails, it falls back to full-file context injection.
 
