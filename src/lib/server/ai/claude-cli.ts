@@ -1,5 +1,15 @@
-import { execSync, spawn as nodeSpawn } from "node:child_process";
+import { type ChildProcess, execSync, spawn as nodeSpawn } from "node:child_process";
 import { log } from "../logger.js";
+
+// Track active claude child processes so they can be killed on cancellation.
+const activeProcesses = new Set<ChildProcess>();
+
+/** Kill all currently running claude child processes (used for job cancellation). */
+export function killActiveClaudeProcesses(): void {
+	for (const proc of activeProcesses) {
+		proc.kill();
+	}
+}
 
 interface ClaudeCliOptions {
 	prompt: string;
@@ -142,6 +152,7 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 			stdio: ["ignore", "pipe", "pipe"],
 			env,
 		});
+		activeProcesses.add(proc);
 
 		const timeoutId = setTimeout(() => {
 			proc.kill();
@@ -214,11 +225,13 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 
 		proc.on("error", (err) => {
 			clearTimeout(timeoutId);
+			activeProcesses.delete(proc);
 			reject(new Error(`Failed to spawn Claude CLI: ${err.message}`));
 		});
 
 		proc.on("close", (exitCode) => {
 			clearTimeout(timeoutId);
+			activeProcesses.delete(proc);
 			const stderr = Buffer.concat(stderrChunks).toString();
 
 			if (exitCode !== 0) {

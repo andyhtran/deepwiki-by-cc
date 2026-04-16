@@ -8,6 +8,23 @@ let progress = $state(0);
 let message = $state("Starting...");
 let status = $state("pending");
 let error = $state("");
+let cancelling = $state(false);
+
+async function handleCancel() {
+	cancelling = true;
+	try {
+		const res = await fetch(`/api/jobs/${jobId}`, { method: "DELETE" });
+		if (!res.ok) {
+			const body = await res.json().catch(() => null);
+			error = body?.message || "Failed to cancel job";
+			cancelling = false;
+		}
+		// SSE stream will pick up the cancelled status and close
+	} catch {
+		error = "Failed to cancel job";
+		cancelling = false;
+	}
+}
 
 $effect(() => {
 	if (!jobId) return;
@@ -27,6 +44,9 @@ $effect(() => {
 			} else if (data.status === "failed") {
 				eventSource.close();
 				error = data.message || "Job failed";
+			} else if (data.status === "cancelled") {
+				eventSource.close();
+				onComplete();
 			}
 		} catch {
 			// Ignore parse errors
@@ -35,7 +55,7 @@ $effect(() => {
 
 	eventSource.onerror = () => {
 		eventSource.close();
-		if (status !== "completed" && status !== "failed") {
+		if (status !== "completed" && status !== "failed" && status !== "cancelled") {
 			error = "Lost connection to job. Refresh to check status.";
 		}
 	};
@@ -65,13 +85,23 @@ $effect(() => {
 			{/if}
 			{#if status === "pending"}
 				<span class="status-badge queued">Queued</span>
+			{:else if status === "cancelled"}
+				<span class="status-badge cancelled">Cancelled</span>
 			{:else}
 				<span class="status-badge active">Generating</span>
 			{/if}
+			<button
+				class="cancel-btn"
+				onclick={handleCancel}
+				disabled={cancelling || status === "cancelled"}
+				title="Cancel this job"
+			>
+				{cancelling ? "Cancelling..." : "Cancel"}
+			</button>
 		</div>
 		<div class="progress-info">
 			<span class="message">{status === "pending" ? "Waiting for other jobs to finish..." : message}</span>
-			{#if status !== "pending"}
+			{#if status !== "pending" && status !== "cancelled"}
 				<span class="percentage">{progress}%</span>
 			{/if}
 		</div>
@@ -122,6 +152,32 @@ $effect(() => {
 	.status-badge.queued {
 		background: var(--color-attention-subtle);
 		color: var(--color-attention-fg);
+	}
+
+	.status-badge.cancelled {
+		background: var(--color-fg-muted);
+		color: var(--color-bg-default);
+	}
+
+	.cancel-btn {
+		margin-left: auto;
+		padding: 0.2rem 0.6rem;
+		font-size: 0.75rem;
+		background: var(--color-bg-muted);
+		color: var(--color-danger-fg);
+		border: 1px solid var(--color-border-default);
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
+	.cancel-btn:hover:not(:disabled) {
+		background: var(--color-danger-subtle);
+		border-color: var(--color-danger-fg);
+	}
+
+	.cancel-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.progress-info {

@@ -28,8 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @openai/codex
 
 RUN useradd -m -s /bin/bash deepwiki && \
-    mkdir -p /home/deepwiki/app/data && \
-    chown -R deepwiki:deepwiki /home/deepwiki/app
+    mkdir -p /home/deepwiki/app/data /home/deepwiki/.codex && \
+    chown -R deepwiki:deepwiki /home/deepwiki/app /home/deepwiki/.codex
 USER deepwiki
 WORKDIR /home/deepwiki/app
 

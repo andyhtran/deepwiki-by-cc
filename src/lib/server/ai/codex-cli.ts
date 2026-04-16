@@ -1,8 +1,18 @@
-import { execSync, spawn as nodeSpawn } from "node:child_process";
+import { type ChildProcess, execSync, spawn as nodeSpawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { log } from "../logger.js";
+
+// Track active codex child processes so they can be killed on cancellation.
+const activeProcesses = new Set<ChildProcess>();
+
+/** Kill all currently running codex child processes (used for job cancellation). */
+export function killActiveCodexProcesses(): void {
+	for (const proc of activeProcesses) {
+		proc.kill();
+	}
+}
 
 interface CodexCliOptions {
 	prompt: string;
@@ -241,6 +251,9 @@ async function spawnCodex(options: CodexCliOptions): Promise<CodexCliResult> {
 	const prompt = buildPrompt(options.prompt, options.systemPrompt);
 	const start = Date.now();
 
+	// Use "-" as the prompt arg so codex reads the actual prompt from stdin.
+	// This avoids E2BIG (argument list too long) for large prompts that would
+	// exceed the OS ARG_MAX limit when passed as a CLI argument.
 	const args = [
 		"exec",
 		"--json",
@@ -263,7 +276,7 @@ async function spawnCodex(options: CodexCliOptions): Promise<CodexCliResult> {
 		args.push("--output-schema", schemaPath);
 	}
 
-	args.push(prompt);
+	args.push("-");
 
 	const cleanup = (): void => {
 		if (tempDir) {
@@ -285,8 +298,12 @@ async function spawnCodex(options: CodexCliOptions): Promise<CodexCliResult> {
 
 	return new Promise<CodexCliResult>((resolve, reject) => {
 		const proc = nodeSpawn("codex", args, {
-			stdio: ["ignore", "pipe", "pipe"],
+			stdio: ["pipe", "pipe", "pipe"],
 		});
+		activeProcesses.add(proc);
+
+		// Feed the prompt via stdin so we don't hit ARG_MAX limits.
+		proc.stdin.end(prompt);
 
 		const timeoutId = setTimeout(() => {
 			proc.kill();
@@ -317,12 +334,14 @@ async function spawnCodex(options: CodexCliOptions): Promise<CodexCliResult> {
 
 		proc.on("error", (err) => {
 			clearTimeout(timeoutId);
+			activeProcesses.delete(proc);
 			cleanup();
 			reject(new Error(`Failed to spawn Codex CLI: ${err.message}`));
 		});
 
 		proc.on("close", (exitCode) => {
 			clearTimeout(timeoutId);
+			activeProcesses.delete(proc);
 			const stderr = Buffer.concat(stderrChunks).toString().trim();
 			if (buffer.trim()) {
 				// Some CLIs do not end the final JSONL event with a newline.
