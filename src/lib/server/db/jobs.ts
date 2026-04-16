@@ -77,6 +77,17 @@ export function failJob(id: number, error: string): void {
 	).run(error, id);
 }
 
+/** Cancel a pending or processing job. Returns true if the job was actually updated. */
+export function cancelJob(id: number): boolean {
+	const db = getDb();
+	const result = db
+		.prepare(
+			"UPDATE jobs SET status = 'cancelled', completed_at = datetime('now') WHERE id = ? AND status IN ('pending', 'processing')",
+		)
+		.run(id);
+	return result.changes > 0;
+}
+
 export function updateJobWikiId(jobId: number, wikiId: number): void {
 	const db = getDb();
 	db.prepare("UPDATE jobs SET wiki_id = ? WHERE id = ?").run(wikiId, jobId);
@@ -120,10 +131,18 @@ export function getActiveJobs(): ActiveJobInfo[] {
 		.all() as ActiveJobInfo[];
 }
 
-export function resetProcessingJobs(): number {
+/**
+ * Cancel any jobs that were still in-flight when server shut down.
+ * Previously these were re-queued as 'pending', which caused unexpected
+ * auto-restarts after a deploy. Cancelling is safer — the user can
+ * explicitly resume if they want to retry.
+ */
+export function cancelStaleJobs(): number {
 	const db = getDb();
 	const result = db
-		.prepare("UPDATE jobs SET status = 'pending', started_at = NULL WHERE status = 'processing'")
+		.prepare(
+			"UPDATE jobs SET status = 'cancelled', completed_at = datetime('now') WHERE status IN ('pending', 'processing')",
+		)
 		.run();
 	return result.changes;
 }
