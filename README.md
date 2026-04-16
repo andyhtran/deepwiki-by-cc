@@ -175,7 +175,7 @@ docker compose up -d
 
 | | Size |
 |---|---|
-| Docker image | ~825 MB (includes Node.js, Git, GitHub CLI, Claude CLI; Codex CLI not bundled) |
+| Docker image | ~850 MB (includes Node.js, Git, GitHub CLI, Claude CLI, Codex CLI) |
 | Memory at idle | ~30 MB |
 | Memory during generation | ~100–200 MB (varies with repo size and page concurrency) |
 

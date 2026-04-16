@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get update && apt-get install -y --no-install-recommends gh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install Codex CLI globally (optional model provider)
+RUN npm install -g @openai/codex
+
 RUN useradd -m -s /bin/bash deepwiki && \
     mkdir -p /home/deepwiki/app/data && \
     chown -R deepwiki:deepwiki /home/deepwiki/app
