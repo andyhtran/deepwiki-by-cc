@@ -4,9 +4,7 @@ Generate comprehensive, navigable wikis for any GitHub repository or local codeb
 
 Point DeepWiki at a repo and it will clone it, scan the source files, generate a structured outline and per-page documentation with Mermaid diagrams, and serve the result as a browsable wiki — all in a few minutes.
 
-![Bun](https://img.shields.io/badge/Bun-1.0+-black?style=flat-square&logo=bun)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![SvelteKit](https://img.shields.io/badge/SvelteKit-2.50-FF3E00?style=flat-square&logo=svelte&logoColor=white)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/andyhtran/deepwiki-by-cc)
 ![License](https://img.shields.io/github/license/andyhtran/deepwiki-by-cc?style=flat-square)
 ![Powered by Claudex](https://img.shields.io/badge/powered%20by-Claudex-8A5CF6?style=flat-square)
 
