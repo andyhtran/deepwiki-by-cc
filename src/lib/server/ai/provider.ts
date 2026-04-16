@@ -41,7 +41,7 @@ export async function invokeGenerationModel(
 		prompt: options.prompt,
 		systemPrompt: options.systemPrompt,
 		model: model.cliModel,
-		reasoningEffort: model.reasoningEffort ?? "xhigh",
+		reasoningEffort: model.reasoningEffort ?? "medium",
 		timeoutMs: options.timeoutMs,
 		jsonSchema: options.jsonSchema,
 	});
