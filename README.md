@@ -10,7 +10,9 @@ Point DeepWiki at a repo and it will clone it, scan the source files, generate a
 
 [Features](#features) · [Prerequisites](#prerequisites) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [MCP Server](#mcp-server) · [Self-Hosting](#self-hosting-with-docker)
 
-<!-- TODO: add hero screenshot or GIF here -->
+<p align="center">
+  <img src="docs/deepwiki-home.png" alt="DeepWiki home page with a URL input field and the list of previously generated wikis" width="600">
+</p>
 
 ## Features
 
@@ -22,6 +24,12 @@ Point DeepWiki at a repo and it will clone it, scan the source files, generate a
 - **Sync & resume** — pull latest commits and selectively regenerate only the pages affected by the diff. Resume picks up where interrupted runs left off.
 - **MCP server** — expose wikis to Claude Code and other MCP agents via stdio or Streamable HTTP transport, with keyword and semantic search tools.
 - **Self-hosted** — one-command Docker setup with persistent credential volumes, private-repo support via `GH_TOKEN`, and ~850 MB image footprint.
+
+<p align="center">
+  <img src="docs/deepwiki-by-cc.png" alt="DeepWiki viewer showing a generated wiki with sidebar navigation, page content, and table of contents" width="860">
+  <br>
+  <em>A generated wiki — sidebar navigation, per-page table of contents, Mermaid diagrams, and syntax-highlighted source references.</em>
+</p>
 
 ## Prerequisites
 
