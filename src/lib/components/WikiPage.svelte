@@ -187,7 +187,9 @@ function formatMs(ms: number | null): string {
 				{#if segment.type === 'html'}
 					{@html segment.value}
 				{:else}
-					<MermaidDiagram code={segment.code} />
+					{#key segment.code}
+						<MermaidDiagram code={segment.code} />
+					{/key}
 				{/if}
 			{/each}
 		</div>
