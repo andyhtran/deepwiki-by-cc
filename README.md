@@ -144,13 +144,13 @@ bun run mcp:http   # starts on port 3001 (override with MCP_PORT)
 
 ### Available tools
 
-| Tool | Description |
-|------|-------------|
-| `list_wikis` | List all wikis with their section/page outlines |
-| `get_wiki_page` | Get the full markdown content of a single page |
-| `get_section_pages` | Get all pages in a section at once |
-| `search_wiki` | Keyword search across wiki content |
-| `search_wiki_semantic` | Semantic (embedding-based) search with lexical fallback |
+| Tool | Answers |
+|------|---------|
+| `list_wikis` | Which wikis are indexed, and what's in each one? Catalog with per-section pageCount and pageId arrays. `verbose: true` adds descriptions and per-page contentChars. |
+| `list_pages` | What's the page outline for one specific wiki? Focused alternative to `list_wikis` when you already know the owner/repo. |
+| `get_wiki_pages` | Give me the markdown for these pages. Bulk fetch by `pageIds` and/or `sectionIds`. `mode` selects `full`, `no-diagrams` (strips mermaid), `summary`, `diagrams`, or `citations`. `maxCharsPerPage` for token budgeting. |
+| `search_wiki` | Which pages best match this query? `mode: "semantic"` (default, embedding similarity) or `"lexical"` (keyword). Omit `owner`+`repo` for cross-repo lexical search. |
+| `find_pages_mentioning` | Which wiki pages cite this source path? Reverse citation lookup against each page's source-file list. |
 
 ## Self-Hosting with Docker
 
