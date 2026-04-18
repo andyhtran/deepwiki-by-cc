@@ -4,7 +4,7 @@ import { config, getEffectiveRetrievalConfig } from "$lib/server/config.js";
 describe("getEffectiveRetrievalConfig", () => {
 	test("returns defaults when settings are empty", () => {
 		const result = getEffectiveRetrievalConfig({});
-		expect(result.generation.mode).toBe("constrained");
+		expect(result.generation.mode).toBe("hybrid_auto");
 		expect(result.mcp.mode).toBe("hybrid_auto");
 		expect(result.generation.topK).toBe(config.embeddingTopK);
 		expect(result.generation.maxContextChars).toBe(config.embeddingMaxContextChars);
@@ -14,10 +14,10 @@ describe("getEffectiveRetrievalConfig", () => {
 
 	test("parses custom retrieval modes", () => {
 		const result = getEffectiveRetrievalConfig({
-			retrievalModeGeneration: "hybrid_auto",
+			retrievalModeGeneration: "constrained",
 			retrievalModeMcp: "constrained",
 		});
-		expect(result.generation.mode).toBe("hybrid_auto");
+		expect(result.generation.mode).toBe("constrained");
 		expect(result.mcp.mode).toBe("constrained");
 	});
 
@@ -26,7 +26,7 @@ describe("getEffectiveRetrievalConfig", () => {
 			retrievalModeGeneration: "invalid_mode",
 			retrievalModeMcp: "also_invalid",
 		});
-		expect(result.generation.mode).toBe("constrained");
+		expect(result.generation.mode).toBe("hybrid_auto");
 		expect(result.mcp.mode).toBe("hybrid_auto");
 	});
 

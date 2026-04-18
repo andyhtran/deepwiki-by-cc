@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+// Force constrained mode so this test's "1 chunk, score 0.99" scenario
+// doesn't trip the (now default) hybrid_auto weakness fallback — which would
+// require mocking global retrieval as well.
 const getAllSettings = mock(() => ({
 	embeddingsEnabled: "true",
+	retrievalModeGeneration: "constrained",
 }));
 
 const getEffectiveEmbeddingConfig = mock(() => ({

@@ -24,7 +24,7 @@ ${params.codeContext}
 
 ## Task
 
-Write a comprehensive wiki page about "${params.pageTitle}" based on the source code provided. The page should:
+Write a comprehensive wiki page about "${params.pageTitle}" based on the source code provided. If the README or other docs contradict the source code, prefer the code — docs describe intent and may be stale. The page should:
 
 1. Start with a brief introduction explaining what this part of the codebase does
 2. Explain the key concepts, types, and patterns used
@@ -34,11 +34,11 @@ Write a comprehensive wiki page about "${params.pageTitle}" based on the source 
 
 ${
 	params.suggestedDiagrams.length > 0
-		? `## Diagrams
+		? `## Diagrams budget
 
-Include Mermaid diagrams where helpful. Suggested diagram types for this page: ${params.suggestedDiagrams.join(", ")}
+Diagrams are optional. Default: 0 diagrams. Include at most 1 diagram when it materially aids understanding; use 2 only for pages covering genuinely complex multi-component flows. Do not add diagrams just because a type is suggested (suggested types for this page: ${params.suggestedDiagrams.join(", ")}).
 
-Format Mermaid diagrams as fenced code blocks:
+Place each diagram inline at the point in the prose where it is discussed — not as a trailing appendix. Format Mermaid diagrams as fenced code blocks:
 \`\`\`mermaid
 graph TD
     A["Component A"] --> B["Component B"]

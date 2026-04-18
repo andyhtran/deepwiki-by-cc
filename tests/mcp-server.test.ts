@@ -24,7 +24,8 @@ function setupDb(): Database {
 	return d;
 }
 
-const SAMPLE_CONTENT_NO_DIAGRAM = "# Overview\n\nThis page explains the overview.\n\n## Details\n\nMore details here.";
+const SAMPLE_CONTENT_NO_DIAGRAM =
+	"# Overview\n\nThis page explains the overview.\n\n## Details\n\nMore details here.";
 const SAMPLE_CONTENT_WITH_DIAGRAM =
 	"# Architecture\n\nIntro paragraph.\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nAfter the diagram.";
 
@@ -581,7 +582,7 @@ describe("get_wiki_pages", () => {
 			mode: "citations",
 		});
 		const payload = parsePayload(result) as {
-			pages: ({ pageId: string; missing?: true; didYouMean?: string[] })[];
+			pages: { pageId: string; missing?: true; didYouMean?: string[] }[];
 		};
 		expect(payload.pages[0].missing).toBe(true);
 		expect(payload.pages[0].didYouMean).toContain("architecture");
@@ -703,9 +704,7 @@ describe("search_wiki", () => {
 					content: "How audio capture works in NanoVoice.",
 				},
 			],
-			sections: [
-				{ id: "root", title: "Root", pages: [{ id: "audio", title: "Audio Capture" }] },
-			],
+			sections: [{ id: "root", title: "Root", pages: [{ id: "audio", title: "Audio Capture" }] }],
 		});
 		const result = await handlers.searchWiki({ query: "audio capture", mode: "lexical" });
 		const payload = parsePayload(result) as {

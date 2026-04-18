@@ -449,10 +449,7 @@ export function createHandlers(db: DbLike): Handlers {
 					}[];
 				};
 				const charsForWiki = charsByWikiPage.get(w.id) ?? new Map<string, number>();
-				const totalContentChars = Array.from(charsForWiki.values()).reduce(
-					(sum, c) => sum + c,
-					0,
-				);
+				const totalContentChars = Array.from(charsForWiki.values()).reduce((sum, c) => sum + c, 0);
 				const meta = {
 					generatedAt: w.updated_at,
 					model: w.model,
@@ -467,10 +464,7 @@ export function createHandlers(db: DbLike): Handlers {
 						id: s.id,
 						title: s.title,
 						description: s.description || "",
-						totalContentChars: s.pages.reduce(
-							(sum, p) => sum + (charsForWiki.get(p.id) ?? 0),
-							0,
-						),
+						totalContentChars: s.pages.reduce((sum, p) => sum + (charsForWiki.get(p.id) ?? 0), 0),
 						pages: s.pages.map((p) => ({
 							id: p.id,
 							title: p.title,
@@ -496,10 +490,7 @@ export function createHandlers(db: DbLike): Handlers {
 					title: s.title,
 					pageCount: s.pages.length,
 					pageIds: s.pages.map((p) => p.id),
-					totalContentChars: s.pages.reduce(
-						(sum, p) => sum + (charsForWiki.get(p.id) ?? 0),
-						0,
-					),
+					totalContentChars: s.pages.reduce((sum, p) => sum + (charsForWiki.get(p.id) ?? 0), 0),
 				}));
 				return {
 					owner: w.owner,
@@ -595,15 +586,7 @@ export function createHandlers(db: DbLike): Handlers {
 		},
 
 		// ------------------------------------------------------------------
-		async getWikiPages({
-			owner,
-			repo,
-			pageIds,
-			sectionIds,
-			mode,
-			maxCharsPerPage,
-			maxTotalChars,
-		}) {
+		async getWikiPages({ owner, repo, pageIds, sectionIds, mode, maxCharsPerPage, maxTotalChars }) {
 			const selectedMode = mode ?? "full";
 			const wikiId = getWikiId(db, owner, repo);
 			if (!wikiId) return unknownWikiError(db, owner, repo);

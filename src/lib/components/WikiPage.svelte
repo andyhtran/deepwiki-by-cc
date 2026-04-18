@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { Tokens } from "marked";
 import MermaidDiagram from "./MermaidDiagram.svelte";
 
 export interface PageHeading {
@@ -7,18 +8,42 @@ export interface PageHeading {
 	level: number;
 }
 
+type Segment = { type: "html"; value: string } | { type: "mermaid"; code: string };
+
+function escapeHtml(input: string): string {
+	return input
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+// Render-time fallback for wikis generated before the server-side link policy
+// (or for links that slipped past it). Models sometimes emit file references
+// as absolute filesystem paths; if the tail of such a path matches one of the
+// page's declared source files, treat it as a reference to that file.
+function findRepoFileSuffix(href: string, fileSet: Set<string>): string | null {
+	if (!href.startsWith("/") || href.startsWith("//")) return null;
+	const trimmed = href.replace(/^\/+/, "");
+	if (!trimmed) return null;
+	const parts = trimmed.split("/");
+	for (let i = 0; i < parts.length; i++) {
+		const suffix = parts.slice(i).join("/");
+		if (fileSet.has(suffix)) return suffix;
+	}
+	return null;
+}
+
 let {
 	page,
 	sourceBaseUrl,
 	onHeadings,
 }: { page: any; sourceBaseUrl?: string; onHeadings?: (headings: PageHeading[]) => void } = $props();
-let htmlContent = $state("");
-let mermaidBlocks: string[] = $state([]);
+let segments: Segment[] = $state([]);
 
 $effect(() => {
 	if (!page?.content) {
-		htmlContent = "";
-		mermaidBlocks = [];
+		segments = [];
 		onHeadings?.([]);
 		return;
 	}
@@ -26,19 +51,36 @@ $effect(() => {
 	renderMarkdown(page.content);
 });
 
+// Split markdown on ```mermaid fences into ordered chunks so that each mermaid
+// block renders inline at its authored position, not in a trailing appendix.
+function splitOnMermaid(
+	markdown: string,
+): Array<{ type: "text"; value: string } | { type: "mermaid"; code: string }> {
+	const chunks: Array<{ type: "text"; value: string } | { type: "mermaid"; code: string }> = [];
+	const regex = /```mermaid\n([\s\S]*?)```/g;
+	let lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(markdown)) !== null) {
+		if (match.index > lastIndex) {
+			chunks.push({ type: "text", value: markdown.slice(lastIndex, match.index) });
+		}
+		chunks.push({ type: "mermaid", code: match[1].trim() });
+		lastIndex = match.index + match[0].length;
+	}
+	if (lastIndex < markdown.length) {
+		chunks.push({ type: "text", value: markdown.slice(lastIndex) });
+	}
+	return chunks;
+}
+
 async function renderMarkdown(markdown: string) {
 	const { marked } = await import("marked");
 	const hljs = (await import("highlight.js")).default;
 	const DOMPurify = (await import("dompurify")).default;
 
-	// Extract mermaid blocks before rendering
-	const blocks: string[] = [];
-	const processed = markdown.replace(/```mermaid\n([\s\S]*?)```/g, (_: string, code: string) => {
-		const idx = blocks.length;
-		blocks.push(code.trim());
-		return `<div class="mermaid-placeholder" data-idx="${idx}"></div>`;
-	});
-	mermaidBlocks = blocks;
+	const extractedHeadings: PageHeading[] = [];
+	// Shared across segments so heading IDs remain globally unique on the page.
+	const idCounts: Record<string, number> = {};
 
 	const renderer = new marked.Renderer();
 
@@ -51,8 +93,35 @@ async function renderMarkdown(markdown: string) {
 		return `<pre><code class="hljs">${auto}</code></pre>`;
 	};
 
-	const extractedHeadings: PageHeading[] = [];
-	const idCounts: Record<string, number> = {};
+	// Bind-before-override captures `this === renderer` so the original
+	// implementation's call to `this.parser.parseInline(tokens)` resolves the
+	// parser that marked attaches to the renderer at parse time.
+	const originalLink = renderer.link.bind(renderer);
+	const originalImage = renderer.image.bind(renderer);
+	const pageFileSet = new Set<string>(
+		Array.isArray(page?.file_paths) ? (page.file_paths as string[]) : [],
+	);
+
+	renderer.link = (token: Tokens.Link) => {
+		const href = token.href ?? "";
+		const suffix = findRepoFileSuffix(href, pageFileSet);
+		if (!suffix) return originalLink(token);
+		if (sourceBaseUrl) {
+			return originalLink({ ...token, href: `${sourceBaseUrl}${suffix}` });
+		}
+		// No GitHub base URL available — drop the link and render the repo
+		// path as inline code so the reader still sees which file was meant.
+		return `<code>${escapeHtml(suffix)}</code>`;
+	};
+
+	renderer.image = (token: Tokens.Image) => {
+		const href = token.href ?? "";
+		const suffix = findRepoFileSuffix(href, pageFileSet);
+		if (!suffix) return originalImage(token);
+		// GitHub blob URLs don't serve raw image content, so fall back to
+		// inline code regardless of whether sourceBaseUrl is set.
+		return `<code>${escapeHtml(suffix)}</code>`;
+	};
 
 	renderer.heading = ({ text, depth }: { text: string; depth: number }) => {
 		const plainText = text.replace(/<[^>]+>/g, "");
@@ -61,7 +130,6 @@ async function renderMarkdown(markdown: string) {
 			.replace(/[^\w]+/g, "-")
 			.replace(/^-|-$/g, "");
 
-		// Handle duplicate IDs
 		if (idCounts[id] !== undefined) {
 			idCounts[id]++;
 			id = `${id}-${idCounts[id]}`;
@@ -76,11 +144,24 @@ async function renderMarkdown(markdown: string) {
 		return `<h${depth} id="${id}">${text}</h${depth}>`;
 	};
 
-	const raw = await marked.parse(processed, { renderer });
-	htmlContent = DOMPurify.sanitize(raw, {
-		ADD_TAGS: ["div"],
-		ADD_ATTR: ["data-idx", "class", "id"],
-	});
+	const chunks = splitOnMermaid(markdown);
+	const nextSegments: Segment[] = [];
+
+	for (const chunk of chunks) {
+		if (chunk.type === "mermaid") {
+			nextSegments.push({ type: "mermaid", code: chunk.code });
+			continue;
+		}
+		if (!chunk.value.trim()) continue;
+		const raw = await marked.parse(chunk.value, { renderer });
+		const sanitized = DOMPurify.sanitize(raw, {
+			ADD_TAGS: ["div"],
+			ADD_ATTR: ["class", "id"],
+		});
+		nextSegments.push({ type: "html", value: sanitized });
+	}
+
+	segments = nextSegments;
 	onHeadings?.(extractedHeadings);
 }
 
@@ -102,12 +183,14 @@ function formatMs(ms: number | null): string {
 		{/if}
 
 		<div class="content">
-			{@html htmlContent}
+			{#each segments as segment}
+				{#if segment.type === 'html'}
+					{@html segment.value}
+				{:else}
+					<MermaidDiagram code={segment.code} />
+				{/if}
+			{/each}
 		</div>
-
-		{#each mermaidBlocks as code}
-			<MermaidDiagram {code} />
-		{/each}
 
 		{#if page.file_paths?.length > 0}
 			<div class="source-files">

@@ -5,6 +5,8 @@ import { retrieveContextForPrompt } from "../pipeline/retriever.js";
 import { buildOutlinePrompt } from "../prompts/outline.js";
 import { buildPagePrompt } from "../prompts/page.js";
 import { buildUpdatePrompt } from "../prompts/update.js";
+import { enforceDiagramPolicy } from "./diagram-policy.js";
+import { enforceLinkPolicy } from "./link-policy.js";
 import { invokeGenerationModel } from "./provider.js";
 
 const PAGE_SCHEMA = {
@@ -111,6 +113,9 @@ export function validateOutline(outline: WikiOutline): void {
 export async function generatePage(params: {
 	repoId: number;
 	repoName: string;
+	repoUrl?: string | null;
+	defaultBranch?: string | null;
+	repoFiles?: readonly string[];
 	page: WikiOutlinePage;
 	sectionTitle: string;
 	outline: WikiOutline;
@@ -168,14 +173,22 @@ export async function generatePage(params: {
 	};
 
 	const so = result.structuredOutput as { content?: string } | undefined;
-	const content = so?.content ?? result.text;
-	const diagrams = extractMermaidDiagrams(content);
+	const rawContent = so?.content ?? result.text;
+	const { content: diagramContent, diagrams } = enforceDiagramPolicy(rawContent);
+	const content = enforceLinkPolicy(diagramContent, {
+		repoUrl: params.repoUrl,
+		defaultBranch: params.defaultBranch,
+		repoFiles: params.repoFiles,
+	});
 	return { content, diagrams, usage };
 }
 
 export async function generatePageUpdate(params: {
 	repoId: number;
 	repoName: string;
+	repoUrl?: string | null;
+	defaultBranch?: string | null;
+	repoFiles?: readonly string[];
 	changeTitle: string;
 	changeDescription: string;
 	changeDiff: string;
@@ -184,7 +197,7 @@ export async function generatePageUpdate(params: {
 	filePaths: string[];
 	outline: string;
 	generationModel?: string;
-}): Promise<{ content: string | null; usage: GenerationUsage }> {
+}): Promise<{ content: string | null; diagrams: string[]; usage: GenerationUsage }> {
 	const modelId = params.generationModel || config.generationModel;
 	log.generator.info({ page: params.pageTitle, model: modelId }, "updating page");
 
@@ -237,9 +250,16 @@ export async function generatePageUpdate(params: {
 
 	const so = result.structuredOutput as { noChangesNeeded?: boolean; content?: string } | undefined;
 	if (so?.noChangesNeeded) {
-		return { content: null, usage };
+		return { content: null, diagrams: [], usage };
 	}
-	return { content: so?.content ?? result.text, usage };
+	const rawContent = so?.content ?? result.text;
+	const { content: diagramContent, diagrams } = enforceDiagramPolicy(rawContent);
+	const content = enforceLinkPolicy(diagramContent, {
+		repoUrl: params.repoUrl,
+		defaultBranch: params.defaultBranch,
+		repoFiles: params.repoFiles,
+	});
+	return { content, diagrams, usage };
 }
 
 export function extractMermaidDiagrams(content: string): string[] {
