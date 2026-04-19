@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stripLeadingTitleHeading } from "$lib/server/ai/generator.js";
 import { calculateCost } from "$lib/server/config.js";
 
 describe("calculateCost", () => {
@@ -37,5 +38,35 @@ describe("calculateCost", () => {
 		// input: 100000/1000 * 0.003 = 0.3
 		// output: 50000/1000 * 0.015 = 0.75
 		expect(cost).toBeCloseTo(1.05);
+	});
+});
+
+describe("stripLeadingTitleHeading", () => {
+	test("strips a matching leading H1 followed by a blank line", () => {
+		const input = "# Keyboard UI, Input Modes, and Swipe Engine\n\n## Introduction\nBody.";
+		const out = stripLeadingTitleHeading(input, "Keyboard UI, Input Modes, and Swipe Engine");
+		expect(out).toBe("## Introduction\nBody.");
+	});
+
+	test("is case- and whitespace-insensitive when comparing the title", () => {
+		const input = "#   keyboard ui,  input modes, and swipe engine  \n\n## Body";
+		const out = stripLeadingTitleHeading(input, "Keyboard UI, Input Modes, and Swipe Engine");
+		expect(out).toBe("## Body");
+	});
+
+	test("leaves non-matching leading H1s alone", () => {
+		const input = "# Something Else\n\n## Body";
+		const out = stripLeadingTitleHeading(input, "Keyboard UI");
+		expect(out).toBe(input);
+	});
+
+	test("leaves content starting with H2 untouched", () => {
+		const input = "## Introduction\nBody.";
+		const out = stripLeadingTitleHeading(input, "Whatever");
+		expect(out).toBe(input);
+	});
+
+	test("handles empty/null-ish input without throwing", () => {
+		expect(stripLeadingTitleHeading("", "Title")).toBe("");
 	});
 });

@@ -19,10 +19,29 @@ const UPDATE_SCHEMA = {
 	type: "object" as const,
 	properties: {
 		noChangesNeeded: { type: "boolean" },
-		content: { type: "string" },
+		// Nullable + required: OpenAI strict structured-outputs mode (used by Codex
+		// CLI via --output-schema) demands every property key appear in `required`.
+		// When noChangesNeeded=true the model returns null here.
+		content: { type: ["string", "null"] },
 	},
-	required: ["noChangesNeeded"],
+	required: ["noChangesNeeded", "content"],
 };
+
+/**
+ * Strip a leading `# <page title>` line if the model included one despite
+ * the prompt forbidding it. The wiki viewer renders the title as an H1
+ * itself, so a duplicated H1 shows as the title twice. Only the very first
+ * non-empty line is considered, and only when it matches the page title
+ * (case-insensitive, whitespace-collapsed). Non-matching H1s are left alone.
+ */
+export function stripLeadingTitleHeading(content: string, pageTitle: string): string {
+	if (!content) return content;
+	const match = content.match(/^\s*#\s+([^\n]+?)\s*\n+/);
+	if (!match) return content;
+	const normalize = (s: string): string => s.trim().replace(/\s+/g, " ").toLowerCase();
+	if (normalize(match[1]) !== normalize(pageTitle)) return content;
+	return content.slice(match[0].length);
+}
 
 export function extractJson(text: string): string {
 	let cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "");
@@ -173,7 +192,7 @@ export async function generatePage(params: {
 	};
 
 	const so = result.structuredOutput as { content?: string } | undefined;
-	const rawContent = so?.content ?? result.text;
+	const rawContent = stripLeadingTitleHeading(so?.content ?? result.text, params.page.title);
 	const { content: diagramContent, diagrams } = enforceDiagramPolicy(rawContent);
 	const content = enforceLinkPolicy(diagramContent, {
 		repoUrl: params.repoUrl,
@@ -252,7 +271,7 @@ export async function generatePageUpdate(params: {
 	if (so?.noChangesNeeded) {
 		return { content: null, diagrams: [], usage };
 	}
-	const rawContent = so?.content ?? result.text;
+	const rawContent = stripLeadingTitleHeading(so?.content ?? result.text, params.pageTitle);
 	const { content: diagramContent, diagrams } = enforceDiagramPolicy(rawContent);
 	const content = enforceLinkPolicy(diagramContent, {
 		repoUrl: params.repoUrl,

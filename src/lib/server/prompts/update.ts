@@ -44,6 +44,7 @@ Review the code changes and determine if this wiki page needs to be updated. Con
 If the page needs updates:
 - Set "noChangesNeeded" to false
 - Set "content" to the complete updated page in Markdown
+- Do NOT include the page title as an H1 — it will be added automatically. Start the content with an H2 (##) section, matching the existing page's opening style.
 - Preserve the existing structure and style
 - Only change sections affected by the changes
 - Update or add Mermaid diagrams as needed
