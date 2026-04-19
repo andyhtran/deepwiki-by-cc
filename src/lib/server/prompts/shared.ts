@@ -5,5 +5,5 @@ export const MERMAID_SYNTAX_RULES = `CRITICAL mermaid syntax rules — violating
 - Do NOT use \`%%\` comments, \`style\`, or \`classDef\` directives
 - For sequenceDiagram: use \`participant A as "Display Name"\` when names have special chars
 - For classDiagram: use simple class names, put details in methods/attributes
-- Use \`-->\` for arrows in flowchart/graph, \`->>>\` for sequence diagrams
+- Use \`-->\` for arrows in flowchart/graph, \`->>\` for sequence diagrams (exactly two \`>\`, not three)
 - Do NOT put line breaks inside node labels`;

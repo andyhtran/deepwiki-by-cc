@@ -41,3 +41,11 @@ export function getDocumentsWithHashByRepo(
 		.all(repoId) as { id: number; file_path: string; content_hash: string }[];
 	return new Map(rows.map((r) => [r.file_path, { id: r.id, content_hash: r.content_hash }]));
 }
+
+export function getRepoFilePaths(repoId: number): string[] {
+	const db = getDb();
+	const rows = db.prepare("SELECT file_path FROM documents WHERE repo_id = ?").all(repoId) as {
+		file_path: string;
+	}[];
+	return rows.map((r) => r.file_path);
+}

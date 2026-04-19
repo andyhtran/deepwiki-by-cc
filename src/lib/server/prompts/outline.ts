@@ -27,7 +27,7 @@ export function buildOutlinePrompt(params: {
 ${params.fileTree}
 \`\`\`
 
-${params.readme ? `### README\n${params.readme}\n` : ""}
+${params.readme ? `### README (supporting context — treat as intent, not truth)\n${params.readme}\n` : ""}
 
 ### Languages Used
 ${params.languages.join(", ")}
@@ -69,11 +69,12 @@ Return a JSON object with this exact structure:
 
 ## Guidelines
 
+- Base descriptions on what the code and configuration actually do. Use README/docs as supporting context — they describe intent and may be incomplete or out of date — and rely on the observable behavior in the source when they disagree.
 ${getScaleGuidance(params.fileCount)}
 - The wiki size must be proportional to the repository's actual complexity. Do not invent depth or structure that isn't in the code. A small utility with a few files should produce a brief wiki, not a sprawling multi-section document.
-- The first section should always be "Overview" with a project overview page
+- The first section should always be "Overview" with a project overview page. The Overview page's filePaths must include runtime/entrypoint files (e.g. main entrypoints, primary server/app modules, core exported modules) — not a markdown-only list. README may be included as supporting context but must not dominate.
 - For each page, include ALL source files involved in the feature — not just core implementation files, but also API routes, UI components, database queries, and configuration that participate in the behavior. Think about the full request lifecycle from user action to response.
-- Suggest diagram types where visual explanation would help:
+- Diagrams are optional. Default to \`"diagrams": []\`. Only suggest a diagram type when a visualization would materially improve understanding of a complex flow or architecture — most pages should have none. When you do suggest one, pick from:
   - "architecture" for system architecture diagrams
   - "flow" for data/control flow diagrams
   - "class" for class/type relationship diagrams

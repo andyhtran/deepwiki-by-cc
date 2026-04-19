@@ -86,11 +86,24 @@ onMount(() => {
 		box-sizing: border-box;
 	}
 
+	/* Reserve the header's height when anchor navigation (hash links, TOC
+	   clicks) scrolls a target into view, so headings aren't hidden behind
+	   the sticky top bar. */
+	:global(html) {
+		scroll-padding-top: var(--header-height);
+	}
+
 	:global(body) {
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
 		background: var(--color-bg-default);
 		color: var(--color-fg-default);
 		line-height: 1.6;
+	}
+
+	/* Shared header height — referenced by any sticky element that needs to
+	   sit below the pinned top bar (wiki sidebar, table of contents, etc.). */
+	:global(:root) {
+		--header-height: 3.25rem;
 	}
 
 	:global(a) {
@@ -117,6 +130,12 @@ onMount(() => {
 		background: var(--color-bg-subtle);
 		border-bottom: 1px solid var(--color-border-default);
 		padding: 0.75rem 1.5rem;
+		/* Pin the top bar so the DeepWiki logo (home link) and the right-side
+		   actions (Settings, theme toggle) stay reachable while scrolling long
+		   wiki pages. z-index keeps it above the sticky wiki sidebar / TOC. */
+		position: sticky;
+		top: 0;
+		z-index: 20;
 	}
 
 	nav {

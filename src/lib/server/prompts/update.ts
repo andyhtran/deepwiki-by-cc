@@ -44,10 +44,12 @@ Review the code changes and determine if this wiki page needs to be updated. Con
 If the page needs updates:
 - Set "noChangesNeeded" to false
 - Set "content" to the complete updated page in Markdown
+- Do NOT include the page title as an H1 — it will be added automatically. Start the content with an H2 (##) section, matching the existing page's opening style.
 - Preserve the existing structure and style
 - Only change sections affected by the changes
 - Update or add Mermaid diagrams as needed
 - Only document content that belongs on THIS page — refer to the wiki structure above to avoid duplicating coverage from other pages
+- Headings must describe features, components, or behavior of this repository. Do NOT create headings about documentation methodology or prompt policy (for example: "Code First", "Source of Truth", "Code vs Docs", "Trust Hierarchy").
 
 ${MERMAID_SYNTAX_RULES}
 

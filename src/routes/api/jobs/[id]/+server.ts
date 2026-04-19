@@ -32,7 +32,11 @@ export const GET: RequestHandler = async ({ params }) => {
 
 	if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
 		const statusMessage =
-			job.status === "failed" ? job.error_message : job.status === "cancelled" ? "Cancelled" : "Completed";
+			job.status === "failed"
+				? job.error_message
+				: job.status === "cancelled"
+					? "Cancelled"
+					: "Completed";
 		const data = JSON.stringify({
 			status: job.status,
 			progress: job.progress,
