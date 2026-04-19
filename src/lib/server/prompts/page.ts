@@ -24,7 +24,7 @@ ${params.codeContext}
 
 ## Task
 
-Write a comprehensive wiki page about "${params.pageTitle}" based on the source code provided. If the README or other docs contradict the source code, prefer the code — docs describe intent and may be stale. The page should:
+Write a comprehensive wiki page about "${params.pageTitle}" based on the source code provided. When README or other docs disagree with the implementation, describe what the code actually does; treat docs as supporting context that may be incomplete or out of date. The page should:
 
 1. Start with a brief introduction explaining what this part of the codebase does
 2. Explain the key concepts, types, and patterns used
@@ -62,6 +62,8 @@ Write in Markdown. Use:
 - Bold for key terms on first use
 - Bullet lists for enumerating features/steps
 - Plain text for headings — write "## Repos Table" not "## \`repos\`"
+
+Headings must describe features, components, or behavior of this repository. Do NOT create headings about documentation methodology or prompt policy (for example: "Code First", "Source of Truth", "Code vs Docs", "Trust Hierarchy").
 
 Do NOT include the page title as an H1 - it will be added automatically.
 Write clear, technical documentation that helps developers understand the codebase.`;

@@ -69,7 +69,7 @@ Return a JSON object with this exact structure:
 
 ## Guidelines
 
-- Source-trust hierarchy: code and config are the source of truth; README/docs describe intent and may be outdated or incomplete. When docs conflict with code, trust the code.
+- Base descriptions on what the code and configuration actually do. Use README/docs as supporting context — they describe intent and may be incomplete or out of date — and rely on the observable behavior in the source when they disagree.
 ${getScaleGuidance(params.fileCount)}
 - The wiki size must be proportional to the repository's actual complexity. Do not invent depth or structure that isn't in the code. A small utility with a few files should produce a brief wiki, not a sprawling multi-section document.
 - The first section should always be "Overview" with a project overview page. The Overview page's filePaths must include runtime/entrypoint files (e.g. main entrypoints, primary server/app modules, core exported modules) — not a markdown-only list. README may be included as supporting context but must not dominate.

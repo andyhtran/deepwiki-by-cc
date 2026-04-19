@@ -52,6 +52,25 @@ describe("buildOutlinePrompt", () => {
 		expect(prompt).toContain('"filePaths"');
 		expect(prompt).toContain("Return ONLY the JSON object");
 	});
+
+	test("keeps Overview-first instruction", () => {
+		const prompt = buildOutlinePrompt(baseParams);
+		expect(prompt).toContain('The first section should always be "Overview"');
+	});
+
+	test("uses neutral evidence wording for code-vs-docs", () => {
+		const prompt = buildOutlinePrompt(baseParams);
+		expect(prompt).toContain("observable behavior in the source");
+		expect(prompt).toContain("supporting context");
+	});
+
+	test("omits leak-prone phrasing about source of truth / trust hierarchy", () => {
+		const prompt = buildOutlinePrompt(baseParams);
+		expect(prompt).not.toContain("Source-trust hierarchy");
+		expect(prompt).not.toContain("source of truth");
+		expect(prompt).not.toContain("trust the code");
+		expect(prompt).not.toContain("Code First");
+	});
 });
 
 describe("buildPagePrompt", () => {
@@ -101,6 +120,21 @@ describe("buildPagePrompt", () => {
 	test("includes repo name", () => {
 		const prompt = buildPagePrompt(baseParams);
 		expect(prompt).toContain("acme/widget");
+	});
+
+	test("uses neutral wording for docs-vs-code and forbids meta headings", () => {
+		const prompt = buildPagePrompt(baseParams);
+		expect(prompt).toContain("describe what the code actually does");
+		expect(prompt).toContain("documentation methodology or prompt policy");
+		expect(prompt).toContain("Code First");
+		expect(prompt).toContain("Source of Truth");
+	});
+
+	test("omits leak-prone 'prefer the code' / 'source of truth' phrasing", () => {
+		const prompt = buildPagePrompt(baseParams);
+		expect(prompt).not.toContain("prefer the code");
+		expect(prompt).not.toContain("source of truth");
+		expect(prompt).not.toContain("Trust Hierarchy:");
 	});
 });
 
@@ -168,5 +202,12 @@ describe("buildUpdatePrompt", () => {
 	test("includes repo name", () => {
 		const prompt = buildUpdatePrompt(baseParams);
 		expect(prompt).toContain("## Repository: acme/widget");
+	});
+
+	test("forbids methodology/meta headings", () => {
+		const prompt = buildUpdatePrompt(baseParams);
+		expect(prompt).toContain("documentation methodology or prompt policy");
+		expect(prompt).toContain("Code First");
+		expect(prompt).toContain("Trust Hierarchy");
 	});
 });

@@ -152,6 +152,34 @@ describe("normalizeOutline", () => {
 		expect(result.sections[0].pages[0].diagrams?.length).toBe(2);
 	});
 
+	test("preserves Overview as the first section", () => {
+		const outline: WikiOutline = {
+			title: "Wiki",
+			description: "desc",
+			sections: [
+				{
+					id: "overview",
+					title: "Overview",
+					description: "",
+					pages: [{ id: "overview-page", title: "Overview", description: "", filePaths: [] }],
+				},
+				{
+					id: "components",
+					title: "Components",
+					description: "",
+					pages: [{ id: "c1", title: "C1", description: "", filePaths: ["src/util.ts"] }],
+				},
+			],
+		};
+		const files = mkFiles(["README.md", "src/index.ts", "src/util.ts"]);
+		const result = normalizeOutline(outline, { files });
+		expect(result.sections[0].id).toBe("overview");
+		expect(result.sections[0].title).toBe("Overview");
+		// Overview should have entrypoint(s) injected since it had no code files.
+		expect(result.sections[0].pages[0].filePaths.length).toBeGreaterThan(0);
+		expect(result.sections[0].pages[0].filePaths).toContain("src/index.ts");
+	});
+
 	test("is idempotent", () => {
 		const outline = mkOutline([
 			{

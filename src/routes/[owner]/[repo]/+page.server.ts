@@ -56,12 +56,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
 	const repo = wiki.repo_id
 		? (db
-				.prepare("SELECT default_branch, last_commit_sha, updated_at FROM repos WHERE id = ?")
+				.prepare("SELECT default_branch, last_commit_sha FROM repos WHERE id = ?")
 				.get(wiki.repo_id) as
 				| {
 						default_branch: string;
 						last_commit_sha: string | null;
-						updated_at: string;
 				  }
 				| undefined)
 		: undefined;
@@ -102,7 +101,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		activeJobId,
 		defaultBranch: repo?.default_branch ?? "main",
 		lastIndexedSha: repo?.last_commit_sha ?? null,
-		lastIndexedAt: repo?.updated_at ?? null,
+		// "Last indexed" means when THIS wiki version finished generating, not
+		// when the repos row was last touched (which refreshes on unrelated
+		// updates like clone_path changes or `/api/generate` upserts). Prefer
+		// the wiki's completed job timestamp; fall back to wiki.updated_at.
+		lastIndexedAt: job?.completed_at ?? wiki.updated_at ?? null,
 		embeddingInfo: wiki.embedding_enabled
 			? {
 					model: wiki.embedding_model,

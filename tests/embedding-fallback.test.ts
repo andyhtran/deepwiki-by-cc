@@ -2,23 +2,16 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Force constrained mode so this test's "1 chunk, score 0.99" scenario
 // doesn't trip the (now default) hybrid_auto weakness fallback — which would
-// require mocking global retrieval as well.
+// require mocking global retrieval as well. We deliberately DO NOT mock
+// $lib/server/config.js: Bun's mock.module is process-wide and not
+// auto-restored between files, and a partial replacement of config.js here
+// used to leak a stub of getEffectiveEmbeddingConfig into later suites
+// (e.g. embedding-settings-api) and break them. Letting the real config run
+// against a controlled settings bag is enough — `enabled: true` is the only
+// behavior this test depends on; the rest are defaults.
 const getAllSettings = mock(() => ({
 	embeddingsEnabled: "true",
 	retrievalModeGeneration: "constrained",
-}));
-
-const getEffectiveEmbeddingConfig = mock(() => ({
-	enabled: true,
-	baseUrl: "https://api.example.com",
-	apiKey: "",
-	model: "emb-model",
-	topK: 5,
-	maxContextChars: 1000,
-	timeoutMs: 1000,
-	chunkSize: 1200,
-	chunkOverlap: 200,
-	batchSize: 16,
 }));
 
 const retrieveRelevantChunks = mock(async () => [
@@ -50,10 +43,6 @@ mock.module("$lib/server/db/settings.js", () => ({
 	getAllSettings,
 }));
 
-mock.module("$lib/server/config.js", () => ({
-	getEffectiveEmbeddingConfig,
-}));
-
 mock.module("$lib/server/embeddings/retrieval.js", () => ({
 	retrieveRelevantChunks,
 }));
@@ -73,10 +62,10 @@ import { retrieveContextForPrompt } from "$lib/server/pipeline/retriever.js";
 describe("retrieveContextForPrompt", () => {
 	beforeEach(() => {
 		getAllSettings.mockClear();
-		getEffectiveEmbeddingConfig.mockClear();
 		retrieveRelevantChunks.mockClear();
 		warn.mockClear();
 	});
+
 
 	test("uses embedding chunks when retrieval succeeds", async () => {
 		const result = await retrieveContextForPrompt({

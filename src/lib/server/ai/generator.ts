@@ -43,6 +43,92 @@ export function stripLeadingTitleHeading(content: string, pageTitle: string): st
 	return content.slice(match[0].length);
 }
 
+// Headings the model sometimes echoes back from prompt policy wording.
+// Matching is on a normalized form (lowercased, punctuation collapsed).
+const META_POLICY_HEADINGS: ReadonlySet<string> = new Set([
+	"code first",
+	"source of truth",
+	"code vs docs",
+	"docs vs code",
+	"trust hierarchy",
+	"source trust hierarchy",
+]);
+
+function normalizeHeadingText(text: string): string {
+	return text
+		.replace(/[`*_~]+/g, "")
+		.replace(/[^\p{L}\p{N}\s]+/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim()
+		.toLowerCase();
+}
+
+/**
+ * Remove or normalize H2/H3 headings whose text is either (a) prompt-policy
+ * wording that leaked through, or (b) a bare inline-code span which the
+ * prompt forbids but the model occasionally emits anyway.
+ *
+ * Content inside fenced code blocks is left untouched.
+ */
+export function sanitizeLeakyHeadings(content: string): string {
+	if (!content) return content;
+
+	const lines = content.split("\n");
+	const out: string[] = [];
+	let inFence = false;
+	let fenceChar: "`" | "~" | "" = "";
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
+		// Toggle fence state on ``` or ~~~ boundaries. Same char type required
+		// to close so nested mixed fences don't confuse us.
+		const fenceMatch = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+		if (fenceMatch) {
+			const marker = fenceMatch[1][0] as "`" | "~";
+			if (!inFence) {
+				inFence = true;
+				fenceChar = marker;
+			} else if (marker === fenceChar) {
+				inFence = false;
+				fenceChar = "";
+			}
+			out.push(line);
+			continue;
+		}
+		if (inFence) {
+			out.push(line);
+			continue;
+		}
+
+		const headingMatch = line.match(/^(#{2,3})\s+(.+?)\s*#*\s*$/);
+		if (headingMatch) {
+			const level = headingMatch[1];
+			const text = headingMatch[2];
+
+			if (META_POLICY_HEADINGS.has(normalizeHeadingText(text))) {
+				// Also consume a trailing blank line so we don't leave two blanks.
+				if (i + 1 < lines.length && lines[i + 1].trim() === "") {
+					i++;
+				}
+				continue;
+			}
+
+			// Whole-heading inline code span → unwrap. Mixed headings (code +
+			// prose) are left alone to stay conservative.
+			const codeSpanMatch = text.match(/^`([^`]+)`$/);
+			if (codeSpanMatch) {
+				out.push(`${level} ${codeSpanMatch[1]}`);
+				continue;
+			}
+		}
+
+		out.push(line);
+	}
+
+	return out.join("\n");
+}
+
 export function extractJson(text: string): string {
 	let cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "");
 
@@ -193,7 +279,8 @@ export async function generatePage(params: {
 
 	const so = result.structuredOutput as { content?: string } | undefined;
 	const rawContent = stripLeadingTitleHeading(so?.content ?? result.text, params.page.title);
-	const { content: diagramContent, diagrams } = enforceDiagramPolicy(rawContent);
+	const sanitized = sanitizeLeakyHeadings(rawContent);
+	const { content: diagramContent, diagrams } = enforceDiagramPolicy(sanitized);
 	const content = enforceLinkPolicy(diagramContent, {
 		repoUrl: params.repoUrl,
 		defaultBranch: params.defaultBranch,
@@ -272,7 +359,8 @@ export async function generatePageUpdate(params: {
 		return { content: null, diagrams: [], usage };
 	}
 	const rawContent = stripLeadingTitleHeading(so?.content ?? result.text, params.pageTitle);
-	const { content: diagramContent, diagrams } = enforceDiagramPolicy(rawContent);
+	const sanitized = sanitizeLeakyHeadings(rawContent);
+	const { content: diagramContent, diagrams } = enforceDiagramPolicy(sanitized);
 	const content = enforceLinkPolicy(diagramContent, {
 		repoUrl: params.repoUrl,
 		defaultBranch: params.defaultBranch,
