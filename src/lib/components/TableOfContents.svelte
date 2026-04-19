@@ -59,7 +59,10 @@ onMount(() => {
 <style>
 	.toc {
 		position: sticky;
-		top: 1rem;
+		/* Add --header-height so the TOC clears the pinned top bar when the
+		   page is scrolled (otherwise its first item would hide behind the
+		   sticky header). */
+		top: calc(var(--header-height) + 1rem);
 	}
 
 	h4 {

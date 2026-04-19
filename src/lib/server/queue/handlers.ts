@@ -6,6 +6,7 @@ import {
 	generatePage,
 	generatePageUpdate,
 } from "../ai/generator.js";
+import { normalizeOutline } from "../ai/outline-normalizer.js";
 import {
 	calculateCost,
 	type EffectiveEmbeddingConfig,
@@ -15,6 +16,7 @@ import {
 import {
 	deleteDocumentsByPaths,
 	getDocumentsWithHashByRepo,
+	getRepoFilePaths,
 	insertDocument,
 } from "../db/documents.js";
 import { deleteEmbeddingDataByPaths } from "../db/embeddings.js";
@@ -212,7 +214,7 @@ export async function handleFullGeneration(
 	);
 	const languages = [...new Set(files.filter((f) => f.language).map((f) => f.language!))];
 
-	const { outline, usage: outlineUsage } = await generateOutline({
+	const { outline: rawOutline, usage: outlineUsage } = await generateOutline({
 		repoName: `${parsed.owner}/${parsed.name}`,
 		fileTree,
 		readme: readme?.content || null,
@@ -221,6 +223,14 @@ export async function handleFullGeneration(
 		modelId: generationModel,
 	});
 	accumulateUsage(totals, outlineUsage);
+
+	// Deterministic post-processing guards against model drift: dedupe
+	// filePaths, drop hallucinated paths, inject entrypoints into code-starved
+	// overviews, and clamp diagram suggestions.
+	const outline = normalizeOutline(rawOutline, {
+		files: files.map((f) => ({ filePath: f.filePath, language: f.language })),
+	});
+
 	log.generation.info(
 		{
 			sections: outline.sections.length,
@@ -301,6 +311,9 @@ export async function handleFullGeneration(
 					const { content, diagrams, usage } = await generatePage({
 						repoId: repo.id,
 						repoName: `${parsed.owner}/${parsed.name}`,
+						repoUrl: parsed.url,
+						defaultBranch,
+						repoFiles: files.map((f) => f.filePath),
 						page,
 						sectionTitle,
 						outline,
@@ -437,6 +450,9 @@ export async function handleSync(
 		changeDescription,
 		diffResult.diff,
 		`${owner}/${repoName}`,
+		repo.url,
+		repo.default_branch,
+		getRepoFilePaths(repo.id),
 		outlineSummary,
 		generationModel,
 		effective.parallelPageLimit,
@@ -506,6 +522,9 @@ async function updateAffectedPages(
 	body: string,
 	diff: string,
 	repoName: string,
+	repoUrl: string,
+	defaultBranch: string,
+	repoFiles: readonly string[],
 	outlineSummary: string,
 	generationModel: string,
 	parallelPageLimit: number,
@@ -554,9 +573,16 @@ async function updateAffectedPages(
 
 				const startTime = Date.now();
 				try {
-					const { content: updatedContent, usage } = await generatePageUpdate({
+					const {
+						content: updatedContent,
+						diagrams: updatedDiagrams,
+						usage,
+					} = await generatePageUpdate({
 						repoId,
 						repoName,
+						repoUrl,
+						defaultBranch,
+						repoFiles,
 						changeTitle: title,
 						changeDescription: body,
 						changeDiff: diff,
@@ -583,10 +609,8 @@ async function updateAffectedPages(
 					};
 
 					if (updatedContent) {
-						const { extractMermaidDiagrams } = await import("../ai/generator.js");
-						const diagrams = extractMermaidDiagrams(updatedContent);
 						pageUpdate.content = updatedContent;
-						pageUpdate.diagrams = JSON.stringify(diagrams);
+						pageUpdate.diagrams = JSON.stringify(updatedDiagrams);
 					}
 
 					updateWikiPage(page.id, pageUpdate);
@@ -646,6 +670,7 @@ export async function handleResumeGeneration(
 	updateJobParams(job.id, { ...params, generationModel, embeddingSnapshot });
 
 	const outline = JSON.parse(wiki.structure) as WikiOutline;
+	const repoFilePaths = getRepoFilePaths(repo.id);
 
 	const allWikiPages = getWikiPages(wiki.id);
 	const failedPages = allWikiPages.filter(
@@ -694,6 +719,9 @@ export async function handleResumeGeneration(
 					const { content, diagrams, usage } = await generatePage({
 						repoId: repo.id,
 						repoName: `${repo.owner}/${repo.name}`,
+						repoUrl: repo.url,
+						defaultBranch: repo.default_branch,
+						repoFiles: repoFilePaths,
 						page,
 						sectionTitle,
 						outline,

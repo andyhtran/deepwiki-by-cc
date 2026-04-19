@@ -98,12 +98,29 @@ function formatTokens(n: number | null): string {
 	return String(n);
 }
 
+// SQLite's datetime('now') returns "YYYY-MM-DD HH:MM:SS" in UTC with no
+// timezone designator. V8 parses that space-separated shape as *local* time,
+// which shifts parsed timestamps by the viewer's UTC offset and — crucially —
+// makes recent rows parse into the future, which `diffMs < 60000` then rounds
+// to "just now" forever. Normalize to explicit UTC before parsing.
+function parseSqliteUtc(dateStr: string): number {
+	// Already a full ISO string with T and Z → trust it.
+	if (/T.*(Z|[+-]\d{2}:?\d{2})$/.test(dateStr)) {
+		return new Date(dateStr).getTime();
+	}
+	// "YYYY-MM-DD HH:MM:SS[.fff]" → swap the space for T and append Z.
+	const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
+	return new Date(`${normalized}Z`).getTime();
+}
+
 function formatRelativeTime(dateStr: string): string {
 	const now = Date.now();
-	const then = new Date(dateStr).getTime();
+	const then = parseSqliteUtc(dateStr);
 	const diffMs = now - then;
+	// Clamp negative drift (clock skew between server and client) to "just now"
+	// rather than showing a nonsense negative duration.
+	if (diffMs < 60_000) return "just now";
 	const minutes = Math.floor(diffMs / 60_000);
-	if (minutes < 1) return "just now";
 	if (minutes < 60) return `${minutes}m ago`;
 	const hours = Math.floor(minutes / 60);
 	if (hours < 24) return `${hours}h ago`;
@@ -245,10 +262,12 @@ function formatRelativeTime(dateStr: string): string {
 		   opts out of the flex parent's default stretch so the sidebar uses
 		   its own 100vh height instead of matching the content column — that
 		   bounded height is what lets `overflow-y: auto` actually scroll the
-		   tree when it's longer than the viewport. */
+		   tree when it's longer than the viewport.
+		   Offset by --header-height so the sidebar tucks under the sticky top
+		   bar instead of being hidden behind it. */
 		position: sticky;
-		top: 0;
-		height: 100vh;
+		top: var(--header-height);
+		height: calc(100vh - var(--header-height));
 		align-self: flex-start;
 	}
 

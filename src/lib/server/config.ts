@@ -66,7 +66,7 @@ export const config = {
 	embeddingChunkOverlap: 200,
 	embeddingBatchSize: 32,
 	// Retrieval mode defaults per surface
-	retrievalModeGeneration: "constrained",
+	retrievalModeGeneration: "hybrid_auto",
 	retrievalModeMcp: "hybrid_auto",
 	// MCP/chat retrieval defaults (generation uses embeddingTopK/embeddingMaxContextChars)
 	mcpTopK: 20,
