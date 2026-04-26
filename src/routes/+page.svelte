@@ -1,13 +1,15 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import JobProgress from "$lib/components/JobProgress.svelte";
 import RepoInput from "$lib/components/RepoInput.svelte";
 import type { PageData } from "./$types.js";
 
 interface WikiItem {
 	id: number;
+	repo_id: number | null;
 	version: number;
-	owner: string;
-	repo_name: string;
+	owner: string | null;
+	repo_name: string | null;
 	status: string;
 	page_count: number;
 	model: string;
@@ -16,6 +18,11 @@ interface WikiItem {
 	total_tokens: number | null;
 	total_cost: number | null;
 	created_at: string;
+	updated_at: string;
+}
+
+interface DedupedWiki extends WikiItem {
+	version_count: number;
 }
 
 interface ActiveJob {
@@ -23,12 +30,36 @@ interface ActiveJob {
 	repoName: string;
 }
 
+type ViewMode = "grid" | "list";
+
 let { data }: { data: PageData } = $props();
 
 let activeJobs: ActiveJob[] = $state(
 	data.activeJobs.map((j) => ({ id: j.id, repoName: j.repo_name })),
 );
 let wikis: WikiItem[] = $state(data.wikis as WikiItem[]);
+let viewMode: ViewMode = $state("grid");
+let searchQuery = $state("");
+
+const VIEW_STORAGE_KEY = "deepwiki:home-view";
+
+onMount(() => {
+	try {
+		const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+		if (saved === "list" || saved === "grid") viewMode = saved;
+	} catch {
+		// localStorage unavailable — keep default
+	}
+});
+
+function setViewMode(mode: ViewMode) {
+	viewMode = mode;
+	try {
+		localStorage.setItem(VIEW_STORAGE_KEY, mode);
+	} catch {
+		// Ignore
+	}
+}
 
 function handleGenerate(jobId: number, repoName: string) {
 	if (!activeJobs.find((j) => j.id === jobId)) {
@@ -63,15 +94,20 @@ async function deleteWiki(id: number, name: string) {
 	}
 }
 
+function focusRepoInput() {
+	const el = document.getElementById("repo-input") as HTMLInputElement | null;
+	if (!el) return;
+	el.scrollIntoView({ behavior: "smooth", block: "center" });
+	// Wait for scroll before focusing so iOS keyboards don't jump.
+	setTimeout(() => el.focus(), 250);
+}
+
 function getWikiLink(wiki: WikiItem): string {
-	// Clean URL for the latest version; only add ?v= for older versions.
-	// The homepage list is sorted by updated_at DESC, so the first entry per repo
-	// is always the latest — link to the clean URL and let the detail page resolve it.
 	return `/${wiki.owner}/${wiki.repo_name}`;
 }
 
 function getWikiDisplayName(wiki: WikiItem): string {
-	return `${wiki.owner}/${wiki.repo_name}`;
+	return `${wiki.owner ?? "unknown"}/${wiki.repo_name ?? "unknown"}`;
 }
 
 function getSourceBadge(type: string): { label: string; cls: string } {
@@ -101,6 +137,56 @@ function shortenModel(model: string): string {
 	if (model.includes("sonnet-4-6")) return "sonnet-4.6";
 	return model;
 }
+
+function formatRelativeTime(dateStr: string): string {
+	const ts = new Date(dateStr).getTime();
+	if (!Number.isFinite(ts)) return "";
+	const diff = Date.now() - ts;
+	const min = 60_000;
+	const hr = 60 * min;
+	const day = 24 * hr;
+	if (diff < min) return "just now";
+	if (diff < hr) return `${Math.round(diff / min)}m ago`;
+	if (diff < day) return `${Math.round(diff / hr)}h ago`;
+	if (diff < 30 * day) return `${Math.round(diff / day)}d ago`;
+	return new Date(dateStr).toLocaleDateString();
+}
+
+// Group wikis by underlying repo so the grid shows one tile per repo. The
+// source list is already ordered by updated_at DESC, so the first occurrence
+// per group is the latest version.
+function dedupeByRepo(list: WikiItem[]): DedupedWiki[] {
+	const map = new Map<string, DedupedWiki>();
+	for (const w of list) {
+		const key =
+			w.repo_id != null
+				? `id:${w.repo_id}`
+				: `nm:${w.source_type}:${w.owner ?? ""}/${w.repo_name ?? ""}`;
+		const existing = map.get(key);
+		if (existing) {
+			existing.version_count += 1;
+		} else {
+			map.set(key, { ...w, version_count: 1 });
+		}
+	}
+	return Array.from(map.values());
+}
+
+let dedupedWikis = $derived(dedupeByRepo(wikis));
+
+let filteredGrid = $derived.by(() => {
+	const q = searchQuery.trim().toLowerCase();
+	if (!q) return dedupedWikis;
+	return dedupedWikis.filter((w) =>
+		`${w.owner ?? ""}/${w.repo_name ?? ""}`.toLowerCase().includes(q),
+	);
+});
+
+let filteredList = $derived.by(() => {
+	const q = searchQuery.trim().toLowerCase();
+	if (!q) return wikis;
+	return wikis.filter((w) => `${w.owner ?? ""}/${w.repo_name ?? ""}`.toLowerCase().includes(q));
+});
 </script>
 
 <div class="home">
@@ -127,13 +213,119 @@ function shortenModel(model: string): string {
 
 	<div class="wikis-section">
 		<div class="section-header">
-			<h2>Generated Wikis</h2>
+			<h2>Repositories</h2>
+			{#if wikis.length > 0}
+				<div class="section-controls">
+					<div class="search-box">
+						<svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="11" cy="11" r="8"/>
+							<path d="m21 21-4.35-4.35"/>
+						</svg>
+						<input
+							type="search"
+							placeholder="Search repositories"
+							bind:value={searchQuery}
+						/>
+					</div>
+					<div class="view-toggle" role="group" aria-label="View mode">
+						<button
+							type="button"
+							class:active={viewMode === 'grid'}
+							onclick={() => setViewMode('grid')}
+							aria-label="Grid view"
+							title="Grid view"
+						>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<rect x="3" y="3" width="7" height="7"/>
+								<rect x="14" y="3" width="7" height="7"/>
+								<rect x="3" y="14" width="7" height="7"/>
+								<rect x="14" y="14" width="7" height="7"/>
+							</svg>
+						</button>
+						<button
+							type="button"
+							class:active={viewMode === 'list'}
+							onclick={() => setViewMode('list')}
+							aria-label="List view"
+							title="List view (all generations)"
+						>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<line x1="8" y1="6" x2="21" y2="6"/>
+								<line x1="8" y1="12" x2="21" y2="12"/>
+								<line x1="8" y1="18" x2="21" y2="18"/>
+								<line x1="3" y1="6" x2="3.01" y2="6"/>
+								<line x1="3" y1="12" x2="3.01" y2="12"/>
+								<line x1="3" y1="18" x2="3.01" y2="18"/>
+							</svg>
+						</button>
+					</div>
+				</div>
+			{/if}
 		</div>
+
 		{#if wikis.length === 0}
 			<p class="muted">No wikis generated yet. Enter a repository URL above to get started.</p>
+		{:else if viewMode === 'grid'}
+			{@const items = filteredGrid}
+			<div class="wiki-grid">
+				<button type="button" class="wiki-tile add-tile" onclick={focusRepoInput}>
+					<div class="add-icon" aria-hidden="true">
+						<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="12" y1="5" x2="12" y2="19"/>
+							<line x1="5" y1="12" x2="19" y2="12"/>
+						</svg>
+					</div>
+					<span class="add-label">Add repo</span>
+				</button>
+				{#each items as wiki (wiki.id)}
+					<a class="wiki-tile" href={getWikiLink(wiki)}>
+						<div class="tile-top">
+							<span class="source-badge {getSourceBadge(wiki.source_type).cls}">
+								{getSourceBadge(wiki.source_type).label}
+							</span>
+							{#if wiki.version_count > 1}
+								<span class="version-count" title="{wiki.version_count} generations">
+									{wiki.version_count} versions
+								</span>
+							{/if}
+						</div>
+						<div class="tile-name">{getWikiDisplayName(wiki)}</div>
+						<div class="tile-meta">
+							<span>{wiki.page_count} pages</span>
+							{#if wiki.model}
+								<span>{shortenModel(wiki.model)}</span>
+							{/if}
+						</div>
+						<div class="tile-footer">
+							<span class="status" class:completed={wiki.status === 'completed'} class:failed={wiki.status === 'failed'} class:generating={wiki.status === 'generating'}>
+								{wiki.status}
+							</span>
+							<span class="tile-date">{formatRelativeTime(wiki.updated_at ?? wiki.created_at)}</span>
+						</div>
+						<button
+							type="button"
+							class="tile-delete"
+							aria-label="Delete wiki"
+							title="Delete latest generation"
+							onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteWiki(wiki.id, getWikiDisplayName(wiki)); }}
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="3 6 5 6 21 6"/>
+								<path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
+								<path d="M10 11v6"/>
+								<path d="M14 11v6"/>
+							</svg>
+						</button>
+					</a>
+				{/each}
+			</div>
+			{#if items.length === 0 && searchQuery.trim()}
+				<p class="muted search-empty">No repositories match "{searchQuery}".</p>
+			{/if}
 		{:else}
+			{@const items = filteredList}
 			<div class="wiki-list">
-				{#each wikis as wiki}
+				{#each items as wiki (wiki.id)}
 					<div class="wiki-card">
 						<div class="wiki-info">
 							<div class="wiki-title-row">
@@ -143,6 +335,9 @@ function shortenModel(model: string): string {
 								<a href={getWikiLink(wiki)} class="wiki-name">
 									{getWikiDisplayName(wiki)}
 								</a>
+								{#if wiki.version > 1}
+									<span class="version-tag">v{wiki.version}</span>
+								{/if}
 							</div>
 							<div class="wiki-meta">
 								<span class="status" class:completed={wiki.status === 'completed'} class:failed={wiki.status === 'failed'} class:generating={wiki.status === 'generating'}>
@@ -170,19 +365,24 @@ function shortenModel(model: string): string {
 					</div>
 				{/each}
 			</div>
+			{#if items.length === 0 && searchQuery.trim()}
+				<p class="muted search-empty">No generations match "{searchQuery}".</p>
+			{/if}
 		{/if}
 	</div>
 </div>
 
 <style>
 	.home {
-		max-width: 800px;
+		/* Cap at ~3 grid columns (3 × 300px tiles + gaps) so wider screens
+		   gain side padding instead of cramming a 4th column. */
+		max-width: 1000px;
 		margin: 0 auto;
 	}
 
 	.hero {
 		text-align: center;
-		padding: 3rem 0;
+		padding: 2.5rem 0 2rem;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -221,6 +421,8 @@ function shortenModel(model: string): string {
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 1rem;
+		gap: 1rem;
+		flex-wrap: wrap;
 	}
 
 	.section-header h2 {
@@ -228,10 +430,225 @@ function shortenModel(model: string): string {
 		color: var(--color-fg-emphasis);
 	}
 
+	.section-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: 1;
+		justify-content: flex-end;
+		min-width: 0;
+	}
+
+	.search-box {
+		position: relative;
+		display: flex;
+		align-items: center;
+		flex: 1;
+		max-width: 320px;
+	}
+
+	.search-icon {
+		position: absolute;
+		left: 0.625rem;
+		color: var(--color-fg-subtle);
+		pointer-events: none;
+	}
+
+	.search-box input {
+		width: 100%;
+		padding: 0.4rem 0.625rem 0.4rem 2rem;
+		background: var(--color-bg-default);
+		border: 1px solid var(--color-border-default);
+		border-radius: 6px;
+		color: var(--color-fg-default);
+		font-size: 0.85rem;
+	}
+
+	.search-box input:focus {
+		outline: none;
+		border-color: var(--color-accent-fg);
+		box-shadow: 0 0 0 3px var(--color-accent-shadow);
+	}
+
+	.view-toggle {
+		display: inline-flex;
+		border: 1px solid var(--color-border-default);
+		border-radius: 6px;
+		overflow: hidden;
+	}
+
+	.view-toggle button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		background: var(--color-bg-default);
+		color: var(--color-fg-muted);
+		border: none;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.view-toggle button + button {
+		border-left: 1px solid var(--color-border-default);
+	}
+
+	.view-toggle button:hover {
+		color: var(--color-fg-default);
+		background: var(--color-bg-hover);
+	}
+
+	.view-toggle button.active {
+		background: var(--color-accent-subtle);
+		color: var(--color-accent-fg);
+	}
+
 	.muted {
 		color: var(--color-fg-subtle);
 	}
 
+	.search-empty {
+		padding: 1rem 0;
+	}
+
+	/* Grid view */
+	.wiki-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: 0.875rem;
+	}
+
+	.wiki-tile {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		min-height: 140px;
+		padding: 1rem 1.125rem;
+		background: var(--color-bg-subtle);
+		border: 1px solid var(--color-border-default);
+		border-radius: 8px;
+		color: var(--color-fg-default);
+		text-decoration: none;
+		transition: border-color 0.12s ease, transform 0.12s ease;
+	}
+
+	.wiki-tile:hover {
+		text-decoration: none;
+		border-color: var(--color-accent-fg);
+	}
+
+	.wiki-tile:hover .tile-delete {
+		opacity: 1;
+	}
+
+	.tile-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.tile-name {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--color-accent-fg);
+		word-break: break-word;
+	}
+
+	.tile-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.625rem;
+		font-size: 0.8rem;
+		color: var(--color-fg-subtle);
+	}
+
+	.tile-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: auto;
+		padding-top: 0.5rem;
+		font-size: 0.75rem;
+	}
+
+	.tile-date {
+		color: var(--color-fg-subtle);
+	}
+
+	.tile-delete {
+		position: absolute;
+		top: 0.5rem;
+		right: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		padding: 0;
+		background: var(--color-bg-default);
+		color: var(--color-fg-subtle);
+		border: 1px solid var(--color-border-default);
+		border-radius: 6px;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+	}
+
+	.tile-delete:hover {
+		color: var(--color-danger-fg);
+		border-color: var(--color-danger-fg);
+	}
+
+	.version-count {
+		font-size: 0.7rem;
+		color: var(--color-fg-muted);
+		background: var(--color-bg-muted);
+		padding: 0.1rem 0.45rem;
+		border-radius: 10px;
+	}
+
+	/* Add-repo tile */
+	.add-tile {
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		gap: 0.5rem;
+		background: var(--color-bg-default);
+		border-style: dashed;
+		color: var(--color-fg-muted);
+		cursor: pointer;
+	}
+
+	.add-tile:hover {
+		color: var(--color-accent-fg);
+		border-color: var(--color-accent-fg);
+		background: var(--color-accent-subtle);
+	}
+
+	.add-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 999px;
+		background: var(--color-bg-muted);
+	}
+
+	.add-tile:hover .add-icon {
+		background: var(--color-accent-subtle);
+		color: var(--color-accent-fg);
+	}
+
+	.add-label {
+		font-size: 0.95rem;
+		font-weight: 600;
+	}
+
+	/* List view (preserved) */
 	.wiki-list {
 		display: flex;
 		flex-direction: column;
@@ -277,6 +694,14 @@ function shortenModel(model: string): string {
 		font-size: 1rem;
 		font-weight: 600;
 		color: var(--color-accent-fg);
+	}
+
+	.version-tag {
+		font-size: 0.7rem;
+		color: var(--color-fg-muted);
+		background: var(--color-bg-muted);
+		padding: 0.1rem 0.4rem;
+		border-radius: 10px;
 	}
 
 	.wiki-meta {
@@ -326,5 +751,19 @@ function shortenModel(model: string): string {
 	.delete-btn:hover {
 		color: var(--color-danger-fg);
 		border-color: var(--color-danger-fg);
+	}
+
+	@media (max-width: 540px) {
+		.section-header {
+			align-items: stretch;
+		}
+
+		.section-controls {
+			justify-content: space-between;
+		}
+
+		.search-box {
+			max-width: none;
+		}
 	}
 </style>

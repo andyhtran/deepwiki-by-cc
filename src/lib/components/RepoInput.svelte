@@ -64,6 +64,7 @@ function cancelPrompt() {
 <form onsubmit={e => { e.preventDefault(); handleSubmit(); }}>
 	<div class="input-group">
 		<input
+			id="repo-input"
 			type="text"
 			bind:value={repoUrl}
 			placeholder="https://github.com/owner/repo or /path/to/local/repo"
