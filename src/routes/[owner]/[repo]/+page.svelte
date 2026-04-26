@@ -4,6 +4,7 @@ import TableOfContents from "$lib/components/TableOfContents.svelte";
 import type { PageHeading } from "$lib/components/WikiPage.svelte";
 import WikiPage from "$lib/components/WikiPage.svelte";
 import WikiTree from "$lib/components/WikiTree.svelte";
+import { wikiDrawer } from "$lib/wiki-drawer.svelte";
 
 let { data } = $props();
 let selectedPageId: string | null = $state(null);
@@ -13,6 +14,18 @@ let resumeJobId: number | null = $state(null);
 let resuming = $state(false);
 let headings: PageHeading[] = $state([]);
 let activeJobId = $derived(data.activeJobId ?? null);
+// Mobile-only off-canvas drawer. The toggle button lives in the global
+// header (so it doesn't overlap article content); state is shared via
+// wikiDrawer so both files stay in sync.
+
+// Lock background scroll while the drawer covers the page so the article
+// underneath doesn't scroll behind the open drawer on iOS. Cleanup runs on
+// re-execution and unmount, so the else branch is implicit.
+$effect(() => {
+	if (!wikiDrawer.open) return;
+	document.body.style.overflow = "hidden";
+	return () => { document.body.style.overflow = ""; };
+});
 let incompletePageCount = $derived(
 	data.pages.filter(
 		(p: any) => p.status === "failed" || p.status === "pending" || p.status === "generating",
@@ -135,8 +148,18 @@ function formatRelativeTime(dateStr: string): string {
 	<link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" {...{disabled: true}} />
 </svelte:head>
 
+<svelte:window onkeydown={(e) => { if (e.key === "Escape" && wikiDrawer.open) wikiDrawer.open = false; }} />
+
 <div class="wiki-viewer">
-	<aside class="sidebar">
+	{#if wikiDrawer.open}
+		<button
+			type="button"
+			class="drawer-backdrop"
+			aria-label="Close pages drawer"
+			onclick={() => { wikiDrawer.open = false; }}
+		></button>
+	{/if}
+	<aside class="sidebar" class:open={wikiDrawer.open}>
 		<div class="sidebar-header">
 			<h2><a href="https://github.com/{data.owner}/{data.repo}" target="_blank" rel="noopener noreferrer">{data.owner}/{data.repo}</a></h2>
 			{#if data.versions && data.versions.length > 1}
@@ -191,7 +214,7 @@ function formatRelativeTime(dateStr: string): string {
 		<WikiTree
 			structure={data.wiki.structure}
 			{selectedPageId}
-			onSelectPage={(id) => { selectedPageId = id; }}
+			onSelectPage={(id) => { selectedPageId = id; wikiDrawer.open = false; }}
 		/>
 		<div class="sidebar-actions">
 			{#if incompletePageCount > 0}
@@ -346,19 +369,10 @@ function formatRelativeTime(dateStr: string): string {
 		display: inline-block;
 	}
 
-	.action-btn:hover:not(:disabled) {
-		background: var(--color-border-default);
-	}
-
 	.resume-btn {
 		background: var(--color-success-bg);
 		border-color: var(--color-success-emphasis);
 		color: var(--color-success-fg);
-	}
-
-	.resume-btn:hover:not(:disabled) {
-		background: var(--color-success-emphasis);
-		color: #fff;
 	}
 
 	.sync-btn {
@@ -367,9 +381,20 @@ function formatRelativeTime(dateStr: string): string {
 		color: var(--color-accent-fg);
 	}
 
-	.sync-btn:hover:not(:disabled) {
-		background: var(--color-accent-emphasis);
-		color: #fff;
+	@media (hover: hover) {
+		.action-btn:hover:not(:disabled) {
+			background: var(--color-border-default);
+		}
+
+		.resume-btn:hover:not(:disabled) {
+			background: var(--color-success-emphasis);
+			color: #fff;
+		}
+
+		.sync-btn:hover:not(:disabled) {
+			background: var(--color-accent-emphasis);
+			color: #fff;
+		}
 	}
 
 	.embedding-badge {
@@ -422,5 +447,55 @@ function formatRelativeTime(dateStr: string): string {
 		font-size: 1.1rem;
 		color: var(--color-fg-emphasis);
 		margin-bottom: 1rem;
+	}
+
+	/* Backdrop is mobile-only; hidden by default so desktop layout is
+	   byte-for-byte unchanged. */
+	.drawer-backdrop {
+		display: none;
+	}
+
+	@media (max-width: 767px) {
+		/* Pull the sidebar out of flex flow and slide it in from the left
+		   over the content. dvh (not vh) so iOS Safari's collapsing URL
+		   bar doesn't truncate the drawer height. */
+		.sidebar {
+			position: fixed;
+			top: var(--header-height);
+			left: 0;
+			width: 280px;
+			min-width: 0;
+			height: calc(100dvh - var(--header-height));
+			transform: translateX(-100%);
+			transition: transform 200ms ease;
+			z-index: 15;
+			box-shadow: 2px 0 12px rgba(0, 0, 0, 0.25);
+			border-right: 1px solid var(--color-border-default);
+		}
+
+		.sidebar.open {
+			transform: translateX(0);
+		}
+
+		.drawer-backdrop {
+			display: block;
+			position: fixed;
+			inset: var(--header-height) 0 0 0;
+			background: rgba(0, 0, 0, 0.45);
+			border: 0;
+			padding: 0;
+			cursor: pointer;
+			z-index: 14;
+			animation: fade-in 150ms ease;
+		}
+
+		@keyframes fade-in {
+			from { opacity: 0; }
+			to { opacity: 1; }
+		}
+
+		.content-area {
+			padding: 1rem 1rem;
+		}
 	}
 </style>
