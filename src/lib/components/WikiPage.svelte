@@ -409,4 +409,14 @@ function formatMs(ms: number | null): string {
 		height: 300px;
 		color: var(--color-fg-subtle);
 	}
+
+	/* On narrow screens, switch tables to block-level so wide tables can
+	   scroll horizontally inside the article instead of stretching the page
+	   layout. Desktop rendering (display: table, width: 100%) is unchanged. */
+	@media (max-width: 767px) {
+		.content :global(table) {
+			display: block;
+			overflow-x: auto;
+		}
+	}
 </style>

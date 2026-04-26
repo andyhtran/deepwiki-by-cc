@@ -82,13 +82,15 @@ let {
 		border-radius: 6px;
 	}
 
-	.page-link:hover {
-		background: var(--color-bg-hover);
-		color: var(--color-fg-default);
-	}
-
 	.page-link.active {
 		background: var(--color-accent-subtle);
 		color: var(--color-accent-fg);
+	}
+
+	@media (hover: hover) {
+		.page-link:hover {
+			background: var(--color-bg-hover);
+			color: var(--color-fg-default);
+		}
 	}
 </style>

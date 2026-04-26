@@ -135,8 +135,10 @@ function cancelPrompt() {
 		white-space: nowrap;
 	}
 
-	button[type="submit"]:hover:not(:disabled) {
-		background: var(--color-success-hover);
+	@media (hover: hover) {
+		button[type="submit"]:hover:not(:disabled) {
+			background: var(--color-success-hover);
+		}
 	}
 
 	.hint {
@@ -182,19 +184,9 @@ function cancelPrompt() {
 		color: var(--color-accent-fg);
 	}
 
-	.btn-view:hover {
-		background: var(--color-accent-emphasis);
-		color: #fff;
-	}
-
 	.btn-generate {
 		background: var(--color-success-subtle);
 		color: var(--color-success-fg);
-	}
-
-	.btn-generate:hover {
-		background: var(--color-success-emphasis);
-		color: #fff;
 	}
 
 	.btn-cancel {
@@ -202,7 +194,32 @@ function cancelPrompt() {
 		color: var(--color-fg-subtle);
 	}
 
-	.btn-cancel:hover {
-		color: var(--color-fg-default);
+	@media (hover: hover) {
+		.btn-view:hover {
+			background: var(--color-accent-emphasis);
+			color: #fff;
+		}
+
+		.btn-generate:hover {
+			background: var(--color-success-emphasis);
+			color: #fff;
+		}
+
+		.btn-cancel:hover {
+			color: var(--color-fg-default);
+		}
+	}
+
+	/* Stack the URL input above the green Generate button on mobile so the
+	   input has the full row width to itself and the action is clearly
+	   below it instead of competing for horizontal space. */
+	@media (max-width: 767px) {
+		.input-group {
+			flex-direction: column;
+		}
+
+		button[type="submit"] {
+			width: 100%;
+		}
 	}
 </style>

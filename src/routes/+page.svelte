@@ -494,9 +494,11 @@ let filteredList = $derived.by(() => {
 		border-left: 1px solid var(--color-border-default);
 	}
 
-	.view-toggle button:hover {
-		color: var(--color-fg-default);
-		background: var(--color-bg-hover);
+	@media (hover: hover) {
+		.view-toggle button:hover {
+			color: var(--color-fg-default);
+			background: var(--color-bg-hover);
+		}
 	}
 
 	.view-toggle button.active {
@@ -534,13 +536,15 @@ let filteredList = $derived.by(() => {
 		transition: border-color 0.12s ease, transform 0.12s ease;
 	}
 
-	.wiki-tile:hover {
-		text-decoration: none;
-		border-color: var(--color-accent-fg);
-	}
+	@media (hover: hover) {
+		.wiki-tile:hover {
+			text-decoration: none;
+			border-color: var(--color-accent-fg);
+		}
 
-	.wiki-tile:hover .tile-delete {
-		opacity: 1;
+		.wiki-tile:hover .tile-delete {
+			opacity: 1;
+		}
 	}
 
 	.tile-top {
@@ -597,9 +601,11 @@ let filteredList = $derived.by(() => {
 		transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 	}
 
-	.tile-delete:hover {
-		color: var(--color-danger-fg);
-		border-color: var(--color-danger-fg);
+	@media (hover: hover) {
+		.tile-delete:hover {
+			color: var(--color-danger-fg);
+			border-color: var(--color-danger-fg);
+		}
 	}
 
 	.version-count {
@@ -622,10 +628,12 @@ let filteredList = $derived.by(() => {
 		cursor: pointer;
 	}
 
-	.add-tile:hover {
-		color: var(--color-accent-fg);
-		border-color: var(--color-accent-fg);
-		background: var(--color-accent-subtle);
+	@media (hover: hover) {
+		.add-tile:hover {
+			color: var(--color-accent-fg);
+			border-color: var(--color-accent-fg);
+			background: var(--color-accent-subtle);
+		}
 	}
 
 	.add-icon {
@@ -638,9 +646,11 @@ let filteredList = $derived.by(() => {
 		background: var(--color-bg-muted);
 	}
 
-	.add-tile:hover .add-icon {
-		background: var(--color-accent-subtle);
-		color: var(--color-accent-fg);
+	@media (hover: hover) {
+		.add-tile:hover .add-icon {
+			background: var(--color-accent-subtle);
+			color: var(--color-accent-fg);
+		}
 	}
 
 	.add-label {
@@ -748,9 +758,11 @@ let filteredList = $derived.by(() => {
 		cursor: pointer;
 	}
 
-	.delete-btn:hover {
-		color: var(--color-danger-fg);
-		border-color: var(--color-danger-fg);
+	@media (hover: hover) {
+		.delete-btn:hover {
+			color: var(--color-danger-fg);
+			border-color: var(--color-danger-fg);
+		}
 	}
 
 	@media (max-width: 540px) {
@@ -764,6 +776,15 @@ let filteredList = $derived.by(() => {
 
 		.search-box {
 			max-width: none;
+		}
+	}
+
+	/* Tighten the grid below the iPad-portrait boundary so two tiles fit
+	   comfortably on a 390px iPhone viewport. Desktop grid (260px minmax)
+	   is unchanged above 768px. */
+	@media (max-width: 767px) {
+		.wiki-grid {
+			grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 		}
 	}
 </style>
