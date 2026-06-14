@@ -5,43 +5,22 @@ describe("getEffectiveRetrievalConfig", () => {
 	test("returns defaults when settings are empty", () => {
 		const result = getEffectiveRetrievalConfig({});
 		expect(result.generation.mode).toBe("hybrid_auto");
-		expect(result.mcp.mode).toBe("hybrid_auto");
 		expect(result.generation.topK).toBe(config.embeddingTopK);
 		expect(result.generation.maxContextChars).toBe(config.embeddingMaxContextChars);
-		expect(result.mcp.topK).toBe(config.mcpTopK);
-		expect(result.mcp.maxContextChars).toBe(config.mcpMaxContextChars);
 	});
 
-	test("parses custom retrieval modes", () => {
+	test("parses custom retrieval mode", () => {
 		const result = getEffectiveRetrievalConfig({
 			retrievalModeGeneration: "constrained",
-			retrievalModeMcp: "constrained",
 		});
 		expect(result.generation.mode).toBe("constrained");
-		expect(result.mcp.mode).toBe("constrained");
 	});
 
 	test("falls back to default for invalid retrieval mode", () => {
 		const result = getEffectiveRetrievalConfig({
 			retrievalModeGeneration: "invalid_mode",
-			retrievalModeMcp: "also_invalid",
 		});
 		expect(result.generation.mode).toBe("hybrid_auto");
-		expect(result.mcp.mode).toBe("hybrid_auto");
-	});
-
-	test("parses MCP topK and maxContextChars", () => {
-		const result = getEffectiveRetrievalConfig({
-			mcpTopK: "30",
-			mcpMaxContextChars: "50000",
-		});
-		expect(result.mcp.topK).toBe(30);
-		expect(result.mcp.maxContextChars).toBe(50000);
-	});
-
-	test("clamps MCP topK to bounds", () => {
-		const result = getEffectiveRetrievalConfig({ mcpTopK: "100" });
-		expect(result.mcp.topK).toBe(50);
 	});
 
 	test("parses weakness thresholds", () => {
@@ -70,10 +49,8 @@ describe("getEffectiveRetrievalConfig", () => {
 
 	test("handles non-numeric values gracefully", () => {
 		const result = getEffectiveRetrievalConfig({
-			mcpTopK: "abc",
 			weaknessMinTopScore: "not-a-number",
 		});
-		expect(result.mcp.topK).toBe(config.mcpTopK);
 		expect(result.weakness.minTopScore).toBe(config.weaknessMinTopScore);
 	});
 

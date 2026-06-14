@@ -14,9 +14,6 @@ let embeddingsEnabled = $state(initEmbeddings.enabled);
 
 // Retrieval mode state
 let retrievalModeGeneration = $state(initRetrieval.generation.mode);
-let retrievalModeMcp = $state(initRetrieval.mcp.mode);
-let mcpTopK = $state(initRetrieval.mcp.topK);
-let mcpMaxContextChars = $state(initRetrieval.mcp.maxContextChars);
 let weaknessMinChunks = $state(initRetrieval.weakness.minChunks);
 let weaknessMinContextChars = $state(initRetrieval.weakness.minContextChars);
 let weaknessMinTopScore = $state(initRetrieval.weakness.minTopScore);
@@ -89,9 +86,6 @@ async function save() {
 			chunkOverlap: Number(embeddingChunkOverlap),
 			batchSize: Number(embeddingBatchSize),
 			retrievalModeGeneration,
-			retrievalModeMcp,
-			mcpTopK: Number(mcpTopK),
-			mcpMaxContextChars: Number(mcpMaxContextChars),
 			weaknessMinChunks: Number(weaknessMinChunks),
 			weaknessMinContextChars: Number(weaknessMinContextChars),
 			weaknessMinTopScore: Number(weaknessMinTopScore),
@@ -147,9 +141,6 @@ function reset() {
 	embeddingChunkOverlap = defaults.embeddings.chunkOverlap;
 	embeddingBatchSize = defaults.embeddings.batchSize;
 	retrievalModeGeneration = defaults.retrieval.generation.mode;
-	retrievalModeMcp = defaults.retrieval.mcp.mode;
-	mcpTopK = defaults.retrieval.mcp.topK;
-	mcpMaxContextChars = defaults.retrieval.mcp.maxContextChars;
 	weaknessMinChunks = defaults.retrieval.weakness.minChunks;
 	weaknessMinContextChars = defaults.retrieval.weakness.minContextChars;
 	weaknessMinTopScore = defaults.retrieval.weakness.minTopScore;
@@ -261,7 +252,7 @@ function reset() {
 		</details>
 
 		<details class="advanced">
-			<summary>Retrieval modes and MCP settings</summary>
+			<summary>Retrieval mode and fallback thresholds</summary>
 			<div class="field-grid advanced-fields">
 				<label class="field">
 					<span>Generation retrieval mode</span>
@@ -269,21 +260,6 @@ function reset() {
 						<option value="constrained">Constrained (file-scoped)</option>
 						<option value="hybrid_auto">Hybrid auto (fallback to global)</option>
 					</select>
-				</label>
-				<label class="field">
-					<span>MCP/chat retrieval mode</span>
-					<select class="model-select" bind:value={retrievalModeMcp}>
-						<option value="constrained">Constrained (file-scoped)</option>
-						<option value="hybrid_auto">Hybrid auto (fallback to global)</option>
-					</select>
-				</label>
-				<label class="field">
-					<span>MCP Top K chunks</span>
-					<input class="number-input" type="number" min="1" max="50" bind:value={mcpTopK} />
-				</label>
-				<label class="field">
-					<span>MCP Max context chars</span>
-					<input class="number-input" type="number" min="1000" max="500000" bind:value={mcpMaxContextChars} />
 				</label>
 			</div>
 			<details class="advanced">

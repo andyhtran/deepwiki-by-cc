@@ -301,9 +301,9 @@ describe("sync page metadata updates", () => {
 	});
 });
 
-describe("MCP semantic search endpoint fingerprint filtering", () => {
+describe("semantic search endpoint fingerprint filtering", () => {
 	test("only matches embeddings with correct model AND fingerprint", () => {
-		const repo = createRepo("mcp", "filter");
+		const repo = createRepo("embeddings", "filter");
 		const fp1 = fingerprint("https://api.openai.com");
 		const fp2 = fingerprint("https://custom-embed.example.com");
 

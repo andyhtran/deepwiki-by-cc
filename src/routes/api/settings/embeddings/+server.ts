@@ -20,12 +20,7 @@ const updateSchema = z
 		chunkSize: z.number().int().min(200).max(8000).optional(),
 		chunkOverlap: z.number().int().min(0).max(2000).optional(),
 		batchSize: z.number().int().min(1).max(128).optional(),
-		// Retrieval mode per surface
 		retrievalModeGeneration: z.enum(["constrained", "hybrid_auto"]).optional(),
-		retrievalModeMcp: z.enum(["constrained", "hybrid_auto"]).optional(),
-		// MCP-specific retrieval overrides
-		mcpTopK: z.number().int().min(1).max(50).optional(),
-		mcpMaxContextChars: z.number().int().min(1000).max(500_000).optional(),
 		// Weakness detection thresholds
 		weaknessMinChunks: z.number().int().min(1).max(20).optional(),
 		weaknessMinContextChars: z.number().int().min(500).max(50_000).optional(),
@@ -78,15 +73,6 @@ function toStoredPairs(payload: z.infer<typeof updateSchema>): [string, string][
 	if (payload.retrievalModeGeneration !== undefined) {
 		pairs.push(["retrievalModeGeneration", payload.retrievalModeGeneration]);
 	}
-	if (payload.retrievalModeMcp !== undefined) {
-		pairs.push(["retrievalModeMcp", payload.retrievalModeMcp]);
-	}
-	if (payload.mcpTopK !== undefined) {
-		pairs.push(["mcpTopK", String(payload.mcpTopK)]);
-	}
-	if (payload.mcpMaxContextChars !== undefined) {
-		pairs.push(["mcpMaxContextChars", String(payload.mcpMaxContextChars)]);
-	}
 	if (payload.weaknessMinChunks !== undefined) {
 		pairs.push(["weaknessMinChunks", String(payload.weaknessMinChunks)]);
 	}
@@ -126,11 +112,6 @@ export const GET: RequestHandler = async () => {
 				mode: config.retrievalModeGeneration,
 				topK: config.embeddingTopK,
 				maxContextChars: config.embeddingMaxContextChars,
-			},
-			mcp: {
-				mode: config.retrievalModeMcp,
-				topK: config.mcpTopK,
-				maxContextChars: config.mcpMaxContextChars,
 			},
 			weakness: {
 				minChunks: config.weaknessMinChunks,

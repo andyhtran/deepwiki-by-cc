@@ -15,8 +15,6 @@ import {
 } from "../embeddings/retrieval.js";
 import { log } from "../logger.js";
 
-export type RetrievalSurface = "generation" | "mcp";
-
 export interface FileContent {
 	filePath: string;
 	language: string | null;
@@ -95,14 +93,11 @@ export async function retrieveContextForPrompt(params: {
 	repoId: number;
 	filePaths: string[];
 	queryText: string;
-	surface?: RetrievalSurface;
 }): Promise<{ codeContext: string; source: "embeddings" | "embeddings_hybrid" | "files" }> {
 	const settings = getAllSettings();
 	const embeddingConfig = getEffectiveEmbeddingConfig(settings);
 	const retrievalConfig = getEffectiveRetrievalConfig(settings);
-
-	const surface = params.surface ?? "generation";
-	const surfaceConfig = surface === "mcp" ? retrievalConfig.mcp : retrievalConfig.generation;
+	const surfaceConfig = retrievalConfig.generation;
 
 	if (embeddingConfig.enabled) {
 		try {
@@ -125,7 +120,6 @@ export async function retrieveContextForPrompt(params: {
 				{
 					repoId: params.repoId,
 					fileCount: params.filePaths.length,
-					surface,
 					err: msg,
 				},
 				"embedding retrieval failed, falling back to file retrieval",

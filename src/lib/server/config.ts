@@ -65,12 +65,8 @@ export const config = {
 	embeddingChunkSize: 1200,
 	embeddingChunkOverlap: 200,
 	embeddingBatchSize: 32,
-	// Retrieval mode defaults per surface
+	// Retrieval mode default for page generation.
 	retrievalModeGeneration: "hybrid_auto",
-	retrievalModeMcp: "hybrid_auto",
-	// MCP/chat retrieval defaults (generation uses embeddingTopK/embeddingMaxContextChars)
-	mcpTopK: 20,
-	mcpMaxContextChars: 32_000,
 	// Weakness detection thresholds for hybrid_auto fallback
 	weaknessMinChunks: 3,
 	weaknessMinContextChars: 4000,
@@ -122,7 +118,6 @@ export interface SurfaceRetrievalConfig {
 
 export interface EffectiveRetrievalConfig {
 	generation: SurfaceRetrievalConfig;
-	mcp: SurfaceRetrievalConfig;
 	weakness: WeaknessThresholds;
 }
 
@@ -176,16 +171,6 @@ export function getEffectiveRetrievalConfig(
 				config.embeddingMaxContextChars,
 				1000,
 				200_000,
-			),
-		},
-		mcp: {
-			mode: parseRetrievalMode(settings.retrievalModeMcp, config.retrievalModeMcp),
-			topK: parseIntegerSetting(settings.mcpTopK, config.mcpTopK, 1, 50),
-			maxContextChars: parseIntegerSetting(
-				settings.mcpMaxContextChars,
-				config.mcpMaxContextChars,
-				1000,
-				500_000,
 			),
 		},
 		weakness: {

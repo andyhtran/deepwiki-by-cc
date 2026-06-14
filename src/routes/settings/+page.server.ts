@@ -48,11 +48,6 @@ export const load: PageServerLoad = async () => {
 					topK: config.embeddingTopK,
 					maxContextChars: config.embeddingMaxContextChars,
 				},
-				mcp: {
-					mode: config.retrievalModeMcp,
-					topK: config.mcpTopK,
-					maxContextChars: config.mcpMaxContextChars,
-				},
 				weakness: {
 					minChunks: config.weaknessMinChunks,
 					minContextChars: config.weaknessMinContextChars,

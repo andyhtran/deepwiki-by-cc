@@ -6,10 +6,6 @@ RUN npm ci
 
 COPY . .
 RUN npx svelte-kit sync && npx vite build
-# Bundle MCP server into a single JS file for Node.js in the final image.
-# better-sqlite3 is external because it has native bindings that can't be bundled.
-RUN npx esbuild src/mcp/server.ts --bundle --platform=node --outfile=build/mcp/server.js \
-    --external:better-sqlite3 --format=esm
 RUN rm -rf node_modules && npm ci --omit=dev
 
 FROM node:22-slim
@@ -48,7 +44,6 @@ COPY --chown=deepwiki:deepwiki docker/entrypoint.sh /opt/claude-defaults/entrypo
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
-EXPOSE 3001
 
 ENTRYPOINT ["/opt/claude-defaults/entrypoint.sh"]
 CMD ["node", "build/index.js"]

@@ -2,8 +2,6 @@ services:
   deepwiki:
     build: .
     network_mode: host
-    environment:
-      - MCP_HTTP=true
     volumes:
       - data:/home/deepwiki/app/data
       - claude-config:/home/deepwiki/.claude

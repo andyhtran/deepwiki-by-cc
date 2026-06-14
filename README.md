@@ -8,7 +8,7 @@ Point DeepWiki at a repo and it will clone it, scan the source files, generate a
 ![License](https://img.shields.io/github/license/andyhtran/deepwiki-by-cc?style=flat-square)
 ![Powered by Claudex](https://img.shields.io/badge/powered%20by-Claudex-8A5CF6?style=flat-square)
 
-[Features](#features) · [Prerequisites](#prerequisites) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [MCP Server](#mcp-server) · [Self-Hosting](#self-hosting-with-docker)
+[Features](#features) · [Prerequisites](#prerequisites) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [Self-Hosting](#self-hosting-with-docker)
 
 <p align="center">
   <img src="docs/deepwiki-home.png" alt="DeepWiki home page with a URL input field and the list of previously generated wikis" width="600">
@@ -22,7 +22,6 @@ Point DeepWiki at a repo and it will clone it, scan the source files, generate a
 - **Semantic retrieval** — optional embeddings with hybrid (file-scoped + global fallback) search, token-aware chunking, and a built-in ANN index. Falls back to full-file context if embedding fails.
 - **Versioned wikis** — keep multiple versions per repo, each tagged with the model and embedding config used to generate it. Switch between versions from the sidebar.
 - **Sync & resume** — pull latest commits and selectively regenerate only the pages affected by the diff. Resume picks up where interrupted runs left off.
-- **MCP server** — expose wikis to Claude Code and other MCP agents via stdio or Streamable HTTP transport, with keyword and semantic search tools.
 - **Self-hosted** — one-command Docker setup with persistent credential volumes, private-repo support via `GH_TOKEN`, and ~850 MB image footprint.
 
 <p align="center">
@@ -92,12 +91,12 @@ When embeddings are enabled, DeepWiki indexes file chunks in SQLite and retrieve
 
 ### Retrieval Modes
 
-DeepWiki uses different retrieval strategies depending on the surface:
+DeepWiki can retrieve generation context in either `constrained` or `hybrid_auto` mode:
 
-| Surface | Default Mode | Top K | Max Context Chars | Description |
-|---------|-------------|-------|-------------------|-------------|
-| Generation | `constrained` | 10 | 16,000 | File-scoped retrieval using the page's assigned file paths |
-| MCP/Chat | `hybrid_auto` | 20 | 32,000 | Tries constrained first, falls back to global if results look weak |
+| Mode | Description |
+|------|-------------|
+| `constrained` | File-scoped retrieval using the page's assigned file paths |
+| `hybrid_auto` | Tries constrained retrieval first, then falls back to global search if results look weak |
 
 In `hybrid_auto` mode, constrained retrieval runs first. If the results are detected as weak (too few chunks, low similarity scores, or flat score distribution), DeepWiki automatically falls back to a global search across all indexed chunks in the repository, then merges and deduplicates the results.
 
@@ -111,47 +110,6 @@ In `hybrid_auto` mode, constrained retrieval runs first. If the results are dete
 
 **ANN index**: An ANN (approximate nearest neighbor) index manifest is built per repo after embedding indexing. Currently backed by exact cosine scan over all embeddings; the interface is forward-compatible with native ANN backends (HNSW, etc.) for larger repos.
 
-## MCP Server
-
-DeepWiki includes an MCP server that exposes generated wikis to Claude Code and other MCP-compatible agents. This lets an AI agent query your project's wiki as context while working.
-
-### Stdio mode (local dev)
-
-```bash
-# Using the justfile
-just mcp-add
-
-# Or manually
-claude mcp add deepwiki -s user -- bun /path/to/deepwiki-by-cc/src/mcp/server.ts
-```
-
-### HTTP mode (Docker / network access)
-
-When running in Docker, the MCP server starts automatically in HTTP mode on port 3001:
-
-```bash
-# Test the endpoint
-curl http://localhost:3001/health
-
-# The MCP endpoint is at /mcp (Streamable HTTP transport)
-```
-
-You can also run HTTP mode locally:
-
-```bash
-bun run mcp:http   # starts on port 3001 (override with MCP_PORT)
-```
-
-### Available tools
-
-| Tool | Answers |
-|------|---------|
-| `list_wikis` | Which wikis are indexed, and what's in each one? Catalog with per-section pageCount and pageId arrays. `verbose: true` adds descriptions and per-page contentChars. |
-| `list_pages` | What's the page outline for one specific wiki? Focused alternative to `list_wikis` when you already know the owner/repo. |
-| `get_wiki_pages` | Give me the markdown for these pages. Bulk fetch by `pageIds` and/or `sectionIds`. `mode` selects `full`, `no-diagrams` (strips mermaid), `summary`, `diagrams`, or `citations`. `maxCharsPerPage` for token budgeting. |
-| `search_wiki` | Which pages best match this query? `mode: "semantic"` (default, embedding similarity) or `"lexical"` (keyword). Omit `owner`+`repo` for cross-repo lexical search. |
-| `find_pages_mentioning` | Which wiki pages cite this source path? Reverse citation lookup against each page's source-file list. |
-
 ## Self-Hosting with Docker
 
 ```bash
@@ -160,7 +118,7 @@ cd deepwiki-by-cc
 docker compose up -d
 ```
 
-The web UI is served on port 8080 and the MCP HTTP server on port 3001.
+The web UI is served on port 8080.
 
 ### Authenticate Claude CLI (one-time)
 
@@ -229,7 +187,6 @@ bun run start     # Start production server (port 8080)
 - **Frontend**: SvelteKit 5, Mermaid, highlight.js
 - **Backend**: SvelteKit server routes, SQLite (better-sqlite3), background job queue
 - **AI**: Claude CLI and Codex CLI (subprocess with streaming JSON output)
-- **MCP**: `@modelcontextprotocol/sdk` with stdio and Streamable HTTP transports
 
 ## License
 

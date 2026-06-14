@@ -50,13 +50,3 @@ up *args:
 [group('docker')]
 down:
     docker compose down
-
-# Register deepwiki MCP server globally in Claude Code
-[group('mcp')]
-mcp-add:
-    claude mcp add deepwiki -s user -- bun {{justfile_directory()}}/src/mcp/server.ts
-
-# Remove deepwiki MCP server from Claude Code
-[group('mcp')]
-mcp-remove:
-    claude mcp remove deepwiki -s user
