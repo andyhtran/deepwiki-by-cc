@@ -33,15 +33,53 @@ let repoDisplayName = $derived(
 // header (so it doesn't overlap article content); state is shared via
 // wikiDrawer so both files stay in sync.
 
-// Lock background scroll while the drawer covers the page so the article
-// underneath doesn't scroll behind the open drawer on iOS. Cleanup runs on
-// re-execution and unmount, so the else branch is implicit.
+// iOS standalone PWAs can still scroll the visual viewport when only body
+// overflow is hidden, so freeze the document at its current scroll offset.
+function lockPageScroll() {
+	const scrollX = window.scrollX;
+	const scrollY = window.scrollY;
+	const { body, documentElement } = document;
+	const previousBody = {
+		left: body.style.left,
+		overflow: body.style.overflow,
+		overscrollBehavior: body.style.overscrollBehavior,
+		position: body.style.position,
+		right: body.style.right,
+		top: body.style.top,
+		width: body.style.width,
+	};
+	const previousHtml = {
+		overflow: documentElement.style.overflow,
+		overscrollBehavior: documentElement.style.overscrollBehavior,
+	};
+
+	documentElement.style.overflow = "hidden";
+	documentElement.style.overscrollBehavior = "none";
+	body.style.left = "0";
+	body.style.overflow = "hidden";
+	body.style.overscrollBehavior = "none";
+	body.style.position = "fixed";
+	body.style.right = "0";
+	body.style.top = `-${scrollY}px`;
+	body.style.width = "100%";
+
+	return () => {
+		documentElement.style.overflow = previousHtml.overflow;
+		documentElement.style.overscrollBehavior = previousHtml.overscrollBehavior;
+		body.style.left = previousBody.left;
+		body.style.overflow = previousBody.overflow;
+		body.style.overscrollBehavior = previousBody.overscrollBehavior;
+		body.style.position = previousBody.position;
+		body.style.right = previousBody.right;
+		body.style.top = previousBody.top;
+		body.style.width = previousBody.width;
+		window.scrollTo(scrollX, scrollY);
+	};
+}
+
 $effect(() => {
 	if (!wikiDrawer.open) return;
-	document.body.style.overflow = "hidden";
-	return () => {
-		document.body.style.overflow = "";
-	};
+	return lockPageScroll();
 });
 let incompletePageCount = $derived(
 	data.pages.filter(
@@ -166,7 +204,6 @@ function formatTokens(n: number | null): string {
 	if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
 	return String(n);
 }
-
 </script>
 
 <svelte:head>
@@ -304,7 +341,9 @@ function formatTokens(n: number | null): string {
 		display: flex;
 		flex-direction: column;
 		overflow-y: auto;
+		overscroll-behavior-y: contain;
 		padding: 1rem 0;
+		-webkit-overflow-scrolling: touch;
 		/* Stick to the viewport as the page scrolls. `align-self: flex-start`
 		   opts out of the flex parent's default stretch so the sidebar uses
 		   its own 100vh height instead of matching the content column — that
@@ -510,6 +549,7 @@ function formatTokens(n: number | null): string {
 			padding: 0;
 			cursor: pointer;
 			z-index: 14;
+			touch-action: none;
 			animation: fade-in 150ms ease;
 		}
 
