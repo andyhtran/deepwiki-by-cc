@@ -1,6 +1,6 @@
 <script>
-import { page } from "$app/state";
 import { onMount } from "svelte";
+import { page } from "$app/state";
 import ThemeToggle from "$lib/components/ThemeToggle.svelte";
 import { theme } from "$lib/theme.svelte";
 import { wikiDrawer } from "$lib/wiki-drawer.svelte";
@@ -8,10 +8,12 @@ import { wikiDrawer } from "$lib/wiki-drawer.svelte";
 let { children } = $props();
 
 // The hamburger toggle should only appear on the wiki viewer route. Match
-// /<owner>/<repo> (two segments, no top-level reserved like /api or /settings).
+// /<owner>/<repo> or /<owner>/<repo>/<page> (no top-level reserved routes).
 let isWikiRoute = $derived.by(() => {
 	const parts = page.url.pathname.split("/").filter(Boolean);
-	return parts.length === 2 && parts[0] !== "api" && parts[0] !== "settings";
+	return (
+		(parts.length === 2 || parts.length === 3) && parts[0] !== "api" && parts[0] !== "settings"
+	);
 });
 
 onMount(() => {

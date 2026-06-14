@@ -7,10 +7,12 @@ import {
 	getWikisByOwnerRepo,
 } from "$lib/server/db/wikis.js";
 import type { Job } from "$lib/types.js";
+import { buildWikiPagePath, resolveWikiPageSlug } from "$lib/wiki-page-slugs.js";
 import type { PageServerLoad } from "./$types.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const versionId = url.searchParams.get("v");
+	const pageSlug = (params as typeof params & { pageSlug?: string }).pageSlug ?? null;
 
 	// Without ?v=, show the latest version
 	const latest = getWikiByOwnerRepo(params.owner, params.repo);
@@ -24,7 +26,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		}
 		// If ?v= points to the latest version, redirect to the clean URL
 		if (latest && wiki.id === latest.id) {
-			throw redirect(302, `/${params.owner}/${params.repo}`);
+			throw redirect(302, buildWikiPagePath({ owner: params.owner, repo: params.repo, pageSlug }));
 		}
 	} else {
 		wiki = latest;
@@ -34,6 +36,33 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	}
 
 	const pages = getWikiPages(wiki.id);
+	const structure = JSON.parse(wiki.structure);
+
+	if (pageSlug) {
+		const resolvedPage = resolveWikiPageSlug(structure, pageSlug);
+		if (!resolvedPage) {
+			throw redirect(
+				302,
+				buildWikiPagePath({
+					owner: params.owner,
+					repo: params.repo,
+					version: versionId,
+				}),
+			);
+		}
+
+		if (pageSlug !== resolvedPage.slug) {
+			throw redirect(
+				302,
+				buildWikiPagePath({
+					owner: params.owner,
+					repo: params.repo,
+					pageSlug: resolvedPage.slug,
+					version: versionId,
+				}),
+			);
+		}
+	}
 
 	const versions = getWikisByOwnerRepo(params.owner, params.repo);
 
@@ -78,7 +107,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	return {
 		wiki: {
 			...wiki,
-			structure: JSON.parse(wiki.structure),
+			structure,
 		},
 		pages: pages.map((p) => ({
 			...p,
@@ -87,6 +116,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		})),
 		owner: params.owner,
 		repo: params.repo,
+		pageSlug,
 		versions: versions.map((v) => ({
 			id: v.id,
 			version: v.version,

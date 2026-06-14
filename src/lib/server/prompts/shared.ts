@@ -2,6 +2,8 @@ export const MERMAID_SYNTAX_RULES = `CRITICAL mermaid syntax rules — violating
 - ALWAYS quote node labels with square brackets: use \`A["Label"]\` not \`A[Label]\`
 - Labels with parentheses, colons, commas, or special chars MUST be quoted: \`A["Type: Value (optional)"]\`
 - Use simple alphanumeric node IDs: \`node1\`, \`audioCapture\`, \`stateA\` — no spaces or special chars in IDs
+- Prefer rectangular flowchart nodes: \`node1["Label"]\`. Only use diamond/rounded/special shapes when the shape itself adds meaning
+- If using flowchart shape delimiters, do NOT put spaces inside the delimiter pair: use \`decision{"Selected model"}\` not \`decision{ "Selected model" }\`
 - Do NOT use \`%%\` comments, \`style\`, or \`classDef\` directives
 - For sequenceDiagram: use \`participant A as "Display Name"\` when names have special chars
 - For classDiagram: use simple class names, put details in methods/attributes

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { sanitizeMermaid } from "$lib/mermaid-sanitize.js";
 import { extractMermaidDiagrams } from "$lib/server/ai/generator.js";
 
 describe("extractMermaidDiagrams", () => {
@@ -83,5 +84,29 @@ describe("extractMermaidDiagrams", () => {
 		const diagrams = extractMermaidDiagrams(content);
 		expect(diagrams).toHaveLength(1);
 		expect(diagrams[0]).toContain("graph TD");
+	});
+});
+
+describe("sanitizeMermaid", () => {
+	test("normalizes quoted flowchart shape labels", () => {
+		const diagram = [
+			"flowchart TD",
+			'  clip --> model{ "Selected model" }',
+			'  model --> parakeet["FluidAudio Parakeet"]',
+		].join("\n");
+
+		expect(sanitizeMermaid(diagram)).toContain('clip --> model{"Selected model"}');
+	});
+
+	test("normalizes triple sequence arrows", () => {
+		const diagram = ["sequenceDiagram", "  Alice->>>Bob: Hi"].join("\n");
+
+		expect(sanitizeMermaid(diagram)).toContain("Alice->>Bob: Hi");
+	});
+
+	test("quotes punctuation in unquoted bracket labels", () => {
+		const diagram = ["flowchart TD", "  A[Type: Value] --> B"].join("\n");
+
+		expect(sanitizeMermaid(diagram)).toContain('A["Type: Value"] --> B');
 	});
 });

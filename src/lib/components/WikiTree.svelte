@@ -12,12 +12,30 @@ interface Structure {
 let {
 	structure,
 	selectedPageId,
+	getPageHref,
 	onSelectPage,
 }: {
 	structure: Structure;
 	selectedPageId: string | null;
+	getPageHref?: (id: string) => string;
 	onSelectPage: (id: string) => void;
 } = $props();
+
+function handlePageClick(event: MouseEvent, id: string) {
+	if (
+		event.defaultPrevented ||
+		event.button !== 0 ||
+		event.metaKey ||
+		event.ctrlKey ||
+		event.shiftKey ||
+		event.altKey
+	) {
+		return;
+	}
+
+	event.preventDefault();
+	onSelectPage(id);
+}
 </script>
 
 <nav class="wiki-tree">
@@ -28,13 +46,24 @@ let {
 				<ul class="page-list">
 					{#each section.pages as page}
 						<li>
-							<button
-								class="page-link"
-								class:active={selectedPageId === page.id}
-								onclick={() => onSelectPage(page.id)}
-							>
-								{page.title}
-							</button>
+							{#if getPageHref}
+								<a
+									class="page-link"
+									class:active={selectedPageId === page.id}
+									href={getPageHref(page.id)}
+									onclick={(event) => handlePageClick(event, page.id)}
+								>
+									{page.title}
+								</a>
+							{:else}
+								<button
+									class="page-link"
+									class:active={selectedPageId === page.id}
+									onclick={() => onSelectPage(page.id)}
+								>
+									{page.title}
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -79,6 +108,7 @@ let {
 		font-size: 0.85rem;
 		cursor: pointer;
 		text-align: left;
+		text-decoration: none;
 		border-radius: 6px;
 	}
 

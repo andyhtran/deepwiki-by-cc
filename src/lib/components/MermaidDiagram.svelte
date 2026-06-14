@@ -1,24 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import { sanitizeMermaid } from "$lib/mermaid-sanitize";
 
 let { code }: { code: string } = $props();
 let container: HTMLDivElement | null = $state(null);
 let rendered = $state(false);
-
-function sanitizeMermaid(src: string): string {
-	// Historical wikis (and any model that read our old prompt) emit `->>>` for
-	// sequenceDiagram arrows — that's three `>`, which mermaid rejects. The
-	// valid arrow is `->>`. Strip the extra `>` before rendering so stale
-	// content still displays. `->>>` has no valid meaning in mermaid, so this
-	// is safe everywhere in a diagram.
-	const normalized = src.replace(/->>>+/g, "->>");
-	return normalized.replace(/(\w+)\[([^\]"]+)\]/g, (_match, id: string, label: string) => {
-		if (/[():,;{}|<>]/.test(label)) {
-			return `${id}["${label.replace(/"/g, "#quot;")}"]`;
-		}
-		return _match;
-	});
-}
 
 onMount(async () => {
 	if (!container || !code) return;

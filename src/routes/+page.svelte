@@ -34,14 +34,17 @@ type ViewMode = "grid" | "list";
 
 let { data }: { data: PageData } = $props();
 
-let activeJobs: ActiveJob[] = $state(
-	data.activeJobs.map((j) => ({ id: j.id, repoName: j.repo_name })),
-);
-let wikis: WikiItem[] = $state(data.wikis as WikiItem[]);
+let activeJobs: ActiveJob[] = $state([]);
+let wikis: WikiItem[] = $state([]);
 let viewMode: ViewMode = $state("grid");
 let searchQuery = $state("");
 
 const VIEW_STORAGE_KEY = "deepwiki:home-view";
+
+$effect(() => {
+	activeJobs = data.activeJobs.map((j) => ({ id: j.id, repoName: j.repo_name }));
+	wikis = data.wikis as WikiItem[];
+});
 
 onMount(() => {
 	try {

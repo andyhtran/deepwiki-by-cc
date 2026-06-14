@@ -1,18 +1,7 @@
 {
+	"extends": "./.svelte-kit/tsconfig.json",
 	"compilerOptions": {
-		"paths": {
-			"$lib": ["./src/lib"],
-			"$lib/*": ["./src/lib/*"]
-		},
-		"rootDirs": [".", "./.svelte-kit/types"],
-		"moduleResolution": "bundler",
-		"target": "esnext",
-		"module": "esnext",
 		"strict": true,
-		"noEmit": true,
-		"verbatimModuleSyntax": true,
-		"isolatedModules": true,
-		"lib": ["esnext", "DOM", "DOM.Iterable"],
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
 		"checkJs": true,
@@ -23,9 +12,6 @@
 		"sourceMap": true
 	},
 	"include": [
-		".svelte-kit/ambient.d.ts",
-		".svelte-kit/non-ambient.d.ts",
-		".svelte-kit/types/**/$types.d.ts",
 		"vite.config.ts",
 		"src/**/*.js",
 		"src/**/*.ts",

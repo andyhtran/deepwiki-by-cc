@@ -1,10 +1,14 @@
 <script lang="ts">
+import { tick } from "svelte";
+import { goto } from "$app/navigation";
+import { page as routePage } from "$app/state";
 import JobProgress from "$lib/components/JobProgress.svelte";
 import TableOfContents from "$lib/components/TableOfContents.svelte";
 import type { PageHeading } from "$lib/components/WikiPage.svelte";
 import WikiPage from "$lib/components/WikiPage.svelte";
 import WikiTree from "$lib/components/WikiTree.svelte";
 import { wikiDrawer } from "$lib/wiki-drawer.svelte";
+import { buildWikiPagePath, getWikiPageSlug, resolveWikiPageSlug } from "$lib/wiki-page-slugs.js";
 
 let { data } = $props();
 let selectedPageId: string | null = $state(null);
@@ -13,7 +17,9 @@ let regenerateJobId: number | null = $state(null);
 let resumeJobId: number | null = $state(null);
 let resuming = $state(false);
 let headings: PageHeading[] = $state([]);
+let contentArea: HTMLDivElement | null = $state(null);
 let activeJobId = $derived(data.activeJobId ?? null);
+let lastSelectionRouteKey: string | null = null;
 // Mobile-only off-canvas drawer. The toggle button lives in the global
 // header (so it doesn't overlap article content); state is shared via
 // wikiDrawer so both files stay in sync.
@@ -24,7 +30,9 @@ let activeJobId = $derived(data.activeJobId ?? null);
 $effect(() => {
 	if (!wikiDrawer.open) return;
 	document.body.style.overflow = "hidden";
-	return () => { document.body.style.overflow = ""; };
+	return () => {
+		document.body.style.overflow = "";
+	};
 });
 let incompletePageCount = $derived(
 	data.pages.filter(
@@ -32,16 +40,55 @@ let incompletePageCount = $derived(
 	).length,
 );
 
-// Select first page by default
 $effect(() => {
-	if (!selectedPageId && data.pages.length > 0) {
-		selectedPageId = data.pages[0].page_id;
-	}
+	const routeKey = `${data.wiki.id}:${data.pageSlug ?? ""}`;
+	if (lastSelectionRouteKey === routeKey) return;
+
+	lastSelectionRouteKey = routeKey;
+	const routePageEntry = data.pageSlug
+		? resolveWikiPageSlug(data.wiki.structure, data.pageSlug)
+		: null;
+	selectedPageId = routePageEntry?.pageId ?? data.pages[0]?.page_id ?? null;
 });
 
 function getSelectedPage() {
 	if (!selectedPageId) return null;
 	return data.pages.find((p: any) => p.page_id === selectedPageId) || null;
+}
+
+async function handleSelectPage(id: string) {
+	selectedPageId = id;
+	wikiDrawer.open = false;
+	const href = getPageHref(id);
+	if (`${routePage.url.pathname}${routePage.url.search}` !== href) {
+		await goto(href, { noScroll: true, keepFocus: true });
+	}
+	await tick();
+	contentArea?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+	window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function getPageSlug(id: string): string | null {
+	return getWikiPageSlug(data.wiki.structure, id);
+}
+
+function getPageHref(id: string): string {
+	const slug = getPageSlug(id);
+	return `${buildWikiPagePath({
+		owner: data.owner,
+		repo: data.repo,
+		pageSlug: slug,
+	})}${routePage.url.search}`;
+}
+
+function getVersionHref(version: string): string {
+	const isLatest = version === String(data.versions[0]?.version);
+	return buildWikiPagePath({
+		owner: data.owner,
+		repo: data.repo,
+		pageSlug: selectedPageId ? getPageSlug(selectedPageId) : data.pageSlug,
+		version: isLatest ? null : version,
+	});
 }
 
 async function handleRegenerate() {
@@ -166,11 +213,7 @@ function formatRelativeTime(dateStr: string): string {
 				<div class="version-selector">
 					<select onchange={(e) => {
 						const ver = (e.target as HTMLSelectElement).value;
-						// Clean URL for the latest version (first in list), ?v= only for older ones
-						const isLatest = ver === String(data.versions[0]?.version);
-						window.location.href = isLatest
-							? `/${data.owner}/${data.repo}`
-							: `/${data.owner}/${data.repo}?v=${ver}`;
+						window.location.href = getVersionHref(ver);
 					}}>
 						{#each data.versions as version}
 							<option value={version.version} selected={version.version === data.currentVersion}>
@@ -214,7 +257,8 @@ function formatRelativeTime(dateStr: string): string {
 		<WikiTree
 			structure={data.wiki.structure}
 			{selectedPageId}
-			onSelectPage={(id) => { selectedPageId = id; wikiDrawer.open = false; }}
+			getPageHref={getPageHref}
+			onSelectPage={handleSelectPage}
 		/>
 		<div class="sidebar-actions">
 			{#if incompletePageCount > 0}
@@ -227,7 +271,7 @@ function formatRelativeTime(dateStr: string): string {
 		</div>
 	</aside>
 
-	<div class="content-area">
+	<div class="content-area" bind:this={contentArea}>
 		{#if resumeJobId}
 			<div class="job-overlay">
 				<h3>Resuming Failed Pages</h3>

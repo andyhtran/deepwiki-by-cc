@@ -66,7 +66,6 @@ describe("retrieveContextForPrompt", () => {
 		warn.mockClear();
 	});
 
-
 	test("uses embedding chunks when retrieval succeeds", async () => {
 		const result = await retrieveContextForPrompt({
 			repoId: 1,
