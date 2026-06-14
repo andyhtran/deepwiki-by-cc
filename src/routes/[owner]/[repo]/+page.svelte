@@ -8,6 +8,7 @@ import type { PageHeading } from "$lib/components/WikiPage.svelte";
 import WikiPage from "$lib/components/WikiPage.svelte";
 import WikiTree from "$lib/components/WikiTree.svelte";
 import { formatAppDate, formatRelativeTime } from "$lib/datetime.js";
+import { formatRepoDisplayName } from "$lib/repo-display.js";
 import { wikiDrawer } from "$lib/wiki-drawer.svelte";
 import { buildWikiPagePath, getWikiPageSlug, resolveWikiPageSlug } from "$lib/wiki-page-slugs.js";
 
@@ -21,6 +22,13 @@ let headings: PageHeading[] = $state([]);
 let contentArea: HTMLDivElement | null = $state(null);
 let activeJobId = $derived(data.activeJobId ?? null);
 let lastSelectionRouteKey: string | null = null;
+let repoDisplayName = $derived(
+	formatRepoDisplayName({
+		owner: data.owner,
+		repoName: data.repo,
+		showOwner: data.display?.showRepoOwner ?? true,
+	}),
+);
 // Mobile-only off-canvas drawer. The toggle button lives in the global
 // header (so it doesn't overlap article content); state is shared via
 // wikiDrawer so both files stay in sync.
@@ -180,7 +188,7 @@ function formatTokens(n: number | null): string {
 	{/if}
 	<aside class="sidebar" class:open={wikiDrawer.open}>
 		<div class="sidebar-header">
-			<h2><a href="https://github.com/{data.owner}/{data.repo}" target="_blank" rel="noopener noreferrer">{data.owner}/{data.repo}</a></h2>
+			<h2><a href="https://github.com/{data.owner}/{data.repo}" target="_blank" rel="noopener noreferrer">{repoDisplayName}</a></h2>
 			{#if data.versions && data.versions.length > 1}
 				<div class="version-selector">
 					<select onchange={(e) => {

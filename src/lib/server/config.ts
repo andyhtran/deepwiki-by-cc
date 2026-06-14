@@ -72,6 +72,7 @@ export const config = {
 	weaknessMinContextChars: 4000,
 	weaknessMinTopScore: 0.3,
 	weaknessMinScoreGap: 0.05,
+	showRepoOwner: true,
 } as const;
 
 export function isGenerationModel(modelId: string): modelId is GenerationModelId {
@@ -119,6 +120,10 @@ export interface SurfaceRetrievalConfig {
 export interface EffectiveRetrievalConfig {
 	generation: SurfaceRetrievalConfig;
 	weakness: WeaknessThresholds;
+}
+
+export interface EffectiveDisplayConfig {
+	showRepoOwner: boolean;
 }
 
 function parseBooleanSetting(value: string | undefined, fallback: boolean): boolean {
@@ -238,11 +243,20 @@ export function getEffectiveEmbeddingConfig(
 	};
 }
 
+export function getEffectiveDisplayConfig(
+	settings: Record<string, string>,
+): EffectiveDisplayConfig {
+	return {
+		showRepoOwner: parseBooleanSetting(settings.showRepoOwner, config.showRepoOwner),
+	};
+}
+
 export function getEffectiveConfig(settings: Record<string, string>): {
 	generationModel: GenerationModelId;
 	parallelPageLimit: number;
 	embeddings: EffectiveEmbeddingConfig;
 	retrieval: EffectiveRetrievalConfig;
+	display: EffectiveDisplayConfig;
 } {
 	const raw = Number(settings.parallelPageLimit);
 	const parallelPageLimit = Number.isNaN(raw)
@@ -253,6 +267,7 @@ export function getEffectiveConfig(settings: Record<string, string>): {
 		parallelPageLimit,
 		embeddings: getEffectiveEmbeddingConfig(settings),
 		retrieval: getEffectiveRetrievalConfig(settings),
+		display: getEffectiveDisplayConfig(settings),
 	};
 }
 

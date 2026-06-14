@@ -1,5 +1,7 @@
 import { error, redirect } from "@sveltejs/kit";
+import { getEffectiveDisplayConfig } from "$lib/server/config.js";
 import { getDb } from "$lib/server/db/index.js";
+import { getAllSettings } from "$lib/server/db/settings.js";
 import {
 	getWikiByOwnerRepo,
 	getWikiByOwnerRepoVersion,
@@ -11,6 +13,7 @@ import { buildWikiPagePath, resolveWikiPageSlug } from "$lib/wiki-page-slugs.js"
 import type { PageServerLoad } from "./$types.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
+	const settings = getAllSettings();
 	const versionId = url.searchParams.get("v");
 	const pageSlug = (params as typeof params & { pageSlug?: string }).pageSlug ?? null;
 
@@ -130,6 +133,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		currentVersion: wiki.version,
 		activeJobId,
 		defaultBranch: repo?.default_branch ?? "main",
+		display: getEffectiveDisplayConfig(settings),
 		lastIndexedSha: repo?.last_commit_sha ?? null,
 		// "Last indexed" means when THIS wiki version finished generating, not
 		// when the repos row was last touched (which refreshes on unrelated

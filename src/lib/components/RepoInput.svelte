@@ -1,5 +1,10 @@
 <script lang="ts">
-let { onSubmit }: { onSubmit?: (jobId: number, repoName: string) => void } = $props();
+import { formatRepoDisplayNameFromFullName } from "$lib/repo-display.js";
+
+let {
+	onSubmit,
+	showRepoOwner = true,
+}: { onSubmit?: (jobId: number, repoName: string) => void; showRepoOwner?: boolean } = $props();
 let repoUrl = $state("");
 let loading = $state(false);
 let error = $state("");
@@ -78,7 +83,7 @@ function cancelPrompt() {
 
 	{#if pendingExisting}
 		<div class="existing-prompt">
-			<p>A wiki already exists for <strong>{pendingExisting.repoName}</strong>.</p>
+			<p>A wiki already exists for <strong>{formatRepoDisplayNameFromFullName(pendingExisting.repoName, showRepoOwner)}</strong>.</p>
 			<div class="existing-actions">
 				<button type="button" class="btn-view" onclick={viewExisting}>View Existing</button>
 				<button type="button" class="btn-generate" onclick={generateNewVersion}>Generate New Version</button>

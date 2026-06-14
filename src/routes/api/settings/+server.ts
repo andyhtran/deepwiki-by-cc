@@ -20,5 +20,14 @@ export const PUT: RequestHandler = async ({ request }) => {
 		}
 	}
 
+	if ("showRepoOwner" in body) {
+		const value = body.showRepoOwner;
+		if (typeof value === "boolean") {
+			setSetting("showRepoOwner", value ? "true" : "false");
+		} else if (value === "true" || value === "false") {
+			setSetting("showRepoOwner", value);
+		}
+	}
+
 	return json({ success: true });
 };

@@ -2,6 +2,7 @@ import {
 	config,
 	GENERATION_MODELS,
 	getEffectiveConfig,
+	getEffectiveDisplayConfig,
 	getEffectiveRetrievalConfig,
 } from "$lib/server/config.js";
 import { getAllSettings } from "$lib/server/db/settings.js";
@@ -18,18 +19,23 @@ export const load: PageServerLoad = async () => {
 	}));
 
 	const effective = getEffectiveConfig(settings);
+	const display = getEffectiveDisplayConfig(settings);
 	const retrieval = getEffectiveRetrievalConfig(settings);
 
 	return {
 		current: {
 			generationModel: effective.generationModel,
 			parallelPageLimit: effective.parallelPageLimit,
+			display,
 			embeddings: effective.embeddings,
 			retrieval,
 		},
 		defaults: {
 			generationModel: config.generationModel,
 			parallelPageLimit: config.parallelPageLimit,
+			display: {
+				showRepoOwner: config.showRepoOwner,
+			},
 			embeddings: {
 				enabled: config.embeddingEnabled,
 				baseUrl: config.embeddingBaseUrl,

@@ -11,6 +11,7 @@ describe("getEffectiveConfig", () => {
 		const result = getEffectiveConfig({});
 		expect(result.generationModel).toBe(config.generationModel);
 		expect(result.parallelPageLimit).toBe(config.parallelPageLimit);
+		expect(result.display.showRepoOwner).toBe(config.showRepoOwner);
 		expect(result.embeddings.enabled).toBe(config.embeddingEnabled);
 		expect(result.embeddings.model).toBe(config.embeddingModel);
 	});
@@ -96,5 +97,13 @@ describe("getEffectiveConfig", () => {
 		expect(result.embeddings.topK).toBe(30);
 		expect(result.embeddings.maxContextChars).toBe(1000);
 		expect(result.embeddings.timeoutMs).toBe(config.embeddingRequestTimeoutMs);
+	});
+
+	test("parses display settings", () => {
+		expect(getEffectiveConfig({ showRepoOwner: "false" }).display.showRepoOwner).toBe(false);
+		expect(getEffectiveConfig({ showRepoOwner: "true" }).display.showRepoOwner).toBe(true);
+		expect(getEffectiveConfig({ showRepoOwner: "invalid" }).display.showRepoOwner).toBe(
+			config.showRepoOwner,
+		);
 	});
 });

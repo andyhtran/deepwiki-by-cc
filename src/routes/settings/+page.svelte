@@ -10,6 +10,7 @@ const {
 
 let generationModel = $state(initModel);
 let parallelPageLimit = $state(initLimit);
+let displayOwner = $state(data.current.display.showRepoOwner);
 let embeddingsEnabled = $state(initEmbeddings.enabled);
 
 // Retrieval mode state
@@ -73,7 +74,11 @@ async function save() {
 			return;
 		}
 
-		const generalPayload: Record<string, string | number> = { generationModel, parallelPageLimit };
+		const generalPayload: Record<string, string | number | boolean> = {
+			generationModel,
+			parallelPageLimit,
+			showRepoOwner: displayOwner,
+		};
 		const embeddingPayload = {
 			enabled: embeddingsEnabled,
 			baseUrl: normalizedBaseUrl,
@@ -130,6 +135,7 @@ async function save() {
 function reset() {
 	generationModel = defaults.generationModel;
 	parallelPageLimit = defaults.parallelPageLimit;
+	displayOwner = defaults.display.showRepoOwner;
 	embeddingsEnabled = defaults.embeddings.enabled;
 	embeddingBaseUrl = defaults.embeddings.baseUrl;
 	embeddingApiKey = defaults.embeddings.apiKey;
@@ -182,6 +188,16 @@ function reset() {
 			max="5"
 			bind:value={parallelPageLimit}
 		/>
+	</div>
+
+	<div class="section">
+		<h2>Display</h2>
+		<p class="description">Controls how repository names are shown in the app.</p>
+
+		<label class="checkbox-row">
+			<input type="checkbox" bind:checked={displayOwner} />
+			<span>Show repository owner</span>
+		</label>
 	</div>
 
 	<details class="section advanced-config">

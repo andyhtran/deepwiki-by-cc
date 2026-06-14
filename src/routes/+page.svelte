@@ -3,6 +3,7 @@ import { onMount } from "svelte";
 import JobProgress from "$lib/components/JobProgress.svelte";
 import RepoInput from "$lib/components/RepoInput.svelte";
 import { formatAppDate, formatRelativeTime } from "$lib/datetime.js";
+import { formatRepoDisplayName, formatRepoDisplayNameFromFullName } from "$lib/repo-display.js";
 import type { PageData } from "./$types.js";
 
 interface WikiItem {
@@ -39,11 +40,15 @@ let activeJobs: ActiveJob[] = $state([]);
 let wikis: WikiItem[] = $state([]);
 let viewMode: ViewMode = $state("grid");
 let searchQuery = $state("");
+let showRepoOwner = $derived(data.display?.showRepoOwner ?? true);
 
 const VIEW_STORAGE_KEY = "deepwiki:home-view";
 
 $effect(() => {
-	activeJobs = data.activeJobs.map((j) => ({ id: j.id, repoName: j.repo_name }));
+	activeJobs = data.activeJobs.map((j) => ({
+		id: j.id,
+		repoName: formatRepoDisplayNameFromFullName(j.repo_name, showRepoOwner),
+	}));
 	wikis = data.wikis as WikiItem[];
 });
 
@@ -66,8 +71,9 @@ function setViewMode(mode: ViewMode) {
 }
 
 function handleGenerate(jobId: number, repoName: string) {
+	const displayRepoName = formatRepoDisplayNameFromFullName(repoName, showRepoOwner);
 	if (!activeJobs.find((j) => j.id === jobId)) {
-		activeJobs = [...activeJobs, { id: jobId, repoName }];
+		activeJobs = [...activeJobs, { id: jobId, repoName: displayRepoName }];
 	}
 }
 
@@ -111,7 +117,11 @@ function getWikiLink(wiki: WikiItem): string {
 }
 
 function getWikiDisplayName(wiki: WikiItem): string {
-	return `${wiki.owner ?? "unknown"}/${wiki.repo_name ?? "unknown"}`;
+	return formatRepoDisplayName({
+		owner: wiki.owner,
+		repoName: wiki.repo_name,
+		showOwner: showRepoOwner,
+	});
 }
 
 function getSourceBadge(type: string): { label: string; cls: string } {
@@ -183,7 +193,7 @@ let filteredList = $derived.by(() => {
 	<div class="hero">
 		<h1>DeepWiki</h1>
 		<p>Generate AI-powered documentation for any GitHub repository or local project.</p>
-		<RepoInput onSubmit={handleGenerate} />
+		<RepoInput onSubmit={handleGenerate} {showRepoOwner} />
 	</div>
 
 	{#if activeJobs.length > 0}
