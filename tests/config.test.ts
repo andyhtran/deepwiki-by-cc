@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { config, getEffectiveConfig, isGenerationModel } from "$lib/server/config.js";
+import {
+	config,
+	getEffectiveConfig,
+	getGenerationModel,
+	isGenerationModel,
+} from "$lib/server/config.js";
 
 describe("getEffectiveConfig", () => {
 	test("returns defaults when settings are empty", () => {
@@ -16,8 +21,10 @@ describe("getEffectiveConfig", () => {
 	});
 
 	test("uses codex model when provided", () => {
-		const result = getEffectiveConfig({ generationModel: "codex-gpt-5-3-xhigh" });
-		expect(result.generationModel).toBe("codex-gpt-5-3-xhigh");
+		const medium = getEffectiveConfig({ generationModel: "gpt-5.5" });
+		const xhigh = getEffectiveConfig({ generationModel: "gpt-5.5-xhigh" });
+		expect(medium.generationModel).toBe("gpt-5.5");
+		expect(xhigh.generationModel).toBe("gpt-5.5-xhigh");
 	});
 
 	test("falls back to default model for empty string", () => {
@@ -33,8 +40,20 @@ describe("getEffectiveConfig", () => {
 	test("validates known generation model ids", () => {
 		expect(isGenerationModel("claude-sonnet-4-6")).toBe(true);
 		expect(isGenerationModel("claude-opus-4-6")).toBe(true);
-		expect(isGenerationModel("codex-gpt-5-3-xhigh")).toBe(true);
+		expect(isGenerationModel("gpt-5.5")).toBe(true);
+		expect(isGenerationModel("gpt-5.5-xhigh")).toBe(true);
 		expect(isGenerationModel("invalid-model")).toBe(false);
+	});
+
+	test("configures gpt-5.5 with medium and xhigh reasoning", () => {
+		expect(getGenerationModel("gpt-5.5")).toMatchObject({
+			cliModel: "gpt-5.5",
+			reasoningEffort: "medium",
+		});
+		expect(getGenerationModel("gpt-5.5-xhigh")).toMatchObject({
+			cliModel: "gpt-5.5",
+			reasoningEffort: "xhigh",
+		});
 	});
 
 	test("parses valid parallelPageLimit", () => {

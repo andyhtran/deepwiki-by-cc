@@ -16,7 +16,7 @@ Point DeepWiki at a repo and it will clone it, scan the source files, generate a
 
 ## Features
 
-- **Claude or Codex** — pick between Claude Sonnet/Opus or Codex CLI (gpt-5.3-codex) per wiki, with streaming progress and configurable page concurrency.
+- **Claude or Codex** — pick between Claude Sonnet/Opus or Codex CLI (gpt-5.5) per wiki, with streaming progress and configurable page concurrency.
 - **GitHub or local** — point at `owner/repo`, a full GitHub URL, or any local directory. `.gitignore`-aware scanning that filters out binaries, lock files, and generated code.
 - **Structured output** — AI-generated outline with sections and pages, rendered with Mermaid diagrams, syntax highlighting, sidebar navigation, and a per-page table of contents.
 - **Semantic retrieval** — optional embeddings with hybrid (file-scoped + global fallback) search, token-aware chunking, and a built-in ANN index. Falls back to full-file context if embedding fails.
@@ -82,11 +82,11 @@ Visit `/settings` in the UI to configure:
 
 | Setting | Default | Options |
 |---------|---------|---------|
-| Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6, gpt-5.3-codex |
+| Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6, gpt-5.5 (medium), gpt-5.5 (xhigh) |
 | Parallel page limit | 2 | 1–5 |
 | Embeddings retrieval | Disabled | Optional OpenAI-compatible endpoint + model |
 
-When Codex is selected, DeepWiki uses `codex exec` with a fixed model (`gpt-5.3-codex`).
+When Codex is selected, DeepWiki uses `codex exec` with model `gpt-5.5` and the selected reasoning effort.
 
 When embeddings are enabled, DeepWiki indexes file chunks in SQLite and retrieves top semantic chunks for page generation context. Configure the embedding endpoint as a full URL (for example, `https://api.openai.com/v1/embeddings` or your proxy equivalent). Advanced retrieval/chunking controls stay collapsed in the UI and default to a low-touch profile (`topK=10`, `maxContextChars=16000`, `chunkSize=1200`, `chunkOverlap=200`). If embedding retrieval fails, it falls back to full-file context injection.
 

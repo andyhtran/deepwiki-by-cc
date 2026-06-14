@@ -27,12 +27,14 @@ describe("settings API model validation", () => {
 	test("accepts all valid generation model ids", async () => {
 		await sendSettings({ generationModel: "claude-sonnet-4-6" });
 		await sendSettings({ generationModel: "claude-opus-4-6" });
-		await sendSettings({ generationModel: "codex-gpt-5-3-xhigh" });
+		await sendSettings({ generationModel: "gpt-5.5" });
+		await sendSettings({ generationModel: "gpt-5.5-xhigh" });
 
 		expect(setSetting.mock.calls).toEqual([
 			["generationModel", "claude-sonnet-4-6"],
 			["generationModel", "claude-opus-4-6"],
-			["generationModel", "codex-gpt-5-3-xhigh"],
+			["generationModel", "gpt-5.5"],
+			["generationModel", "gpt-5.5-xhigh"],
 		]);
 	});
 

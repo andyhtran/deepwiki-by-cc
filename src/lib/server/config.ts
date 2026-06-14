@@ -26,18 +26,18 @@ export const GENERATION_MODELS = {
 		input: 5.0,
 		output: 25.0,
 	},
-	"codex-gpt-5-3": {
-		name: "Codex (gpt-5.3-codex)",
+	"gpt-5.5": {
+		name: "gpt-5.5 (medium)",
 		provider: "codex-cli",
-		cliModel: "gpt-5.3-codex",
+		cliModel: "gpt-5.5",
 		reasoningEffort: "medium",
 		input: 1.75,
 		output: 14.0,
 	},
-	"codex-gpt-5-3-xhigh": {
-		name: "Codex (gpt-5.3-codex, xhigh)",
+	"gpt-5.5-xhigh": {
+		name: "gpt-5.5 (xhigh)",
 		provider: "codex-cli",
-		cliModel: "gpt-5.3-codex",
+		cliModel: "gpt-5.5",
 		reasoningEffort: "xhigh",
 		input: 1.75,
 		output: 14.0,
