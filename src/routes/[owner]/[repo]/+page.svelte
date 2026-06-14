@@ -7,6 +7,7 @@ import TableOfContents from "$lib/components/TableOfContents.svelte";
 import type { PageHeading } from "$lib/components/WikiPage.svelte";
 import WikiPage from "$lib/components/WikiPage.svelte";
 import WikiTree from "$lib/components/WikiTree.svelte";
+import { formatAppDate, formatRelativeTime } from "$lib/datetime.js";
 import { wikiDrawer } from "$lib/wiki-drawer.svelte";
 import { buildWikiPagePath, getWikiPageSlug, resolveWikiPageSlug } from "$lib/wiki-page-slugs.js";
 
@@ -158,35 +159,6 @@ function formatTokens(n: number | null): string {
 	return String(n);
 }
 
-// SQLite's datetime('now') returns "YYYY-MM-DD HH:MM:SS" in UTC with no
-// timezone designator. V8 parses that space-separated shape as *local* time,
-// which shifts parsed timestamps by the viewer's UTC offset and — crucially —
-// makes recent rows parse into the future, which `diffMs < 60000` then rounds
-// to "just now" forever. Normalize to explicit UTC before parsing.
-function parseSqliteUtc(dateStr: string): number {
-	// Already a full ISO string with T and Z → trust it.
-	if (/T.*(Z|[+-]\d{2}:?\d{2})$/.test(dateStr)) {
-		return new Date(dateStr).getTime();
-	}
-	// "YYYY-MM-DD HH:MM:SS[.fff]" → swap the space for T and append Z.
-	const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
-	return new Date(`${normalized}Z`).getTime();
-}
-
-function formatRelativeTime(dateStr: string): string {
-	const now = Date.now();
-	const then = parseSqliteUtc(dateStr);
-	const diffMs = now - then;
-	// Clamp negative drift (clock skew between server and client) to "just now"
-	// rather than showing a nonsense negative duration.
-	if (diffMs < 60_000) return "just now";
-	const minutes = Math.floor(diffMs / 60_000);
-	if (minutes < 60) return `${minutes}m ago`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	return `${days}d ago`;
-}
 </script>
 
 <svelte:head>
@@ -217,7 +189,7 @@ function formatRelativeTime(dateStr: string): string {
 					}}>
 						{#each data.versions as version}
 							<option value={version.version} selected={version.version === data.currentVersion}>
-								v{version.version} — {version.model} — {new Date(version.created_at).toLocaleDateString()} ({version.page_count} pages){version.embedding_enabled ? ' · emb' : ''}
+								v{version.version} — {version.model} — {formatAppDate(version.created_at)} ({version.page_count} pages){version.embedding_enabled ? ' · emb' : ''}
 							</option>
 						{/each}
 					</select>

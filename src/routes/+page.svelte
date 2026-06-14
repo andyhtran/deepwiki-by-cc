@@ -2,6 +2,7 @@
 import { onMount } from "svelte";
 import JobProgress from "$lib/components/JobProgress.svelte";
 import RepoInput from "$lib/components/RepoInput.svelte";
+import { formatAppDate, formatRelativeTime } from "$lib/datetime.js";
 import type { PageData } from "./$types.js";
 
 interface WikiItem {
@@ -139,20 +140,6 @@ function shortenModel(model: string): string {
 	if (model.includes("opus-4-6")) return "opus-4.6";
 	if (model.includes("sonnet-4-6")) return "sonnet-4.6";
 	return model;
-}
-
-function formatRelativeTime(dateStr: string): string {
-	const ts = new Date(dateStr).getTime();
-	if (!Number.isFinite(ts)) return "";
-	const diff = Date.now() - ts;
-	const min = 60_000;
-	const hr = 60 * min;
-	const day = 24 * hr;
-	if (diff < min) return "just now";
-	if (diff < hr) return `${Math.round(diff / min)}m ago`;
-	if (diff < day) return `${Math.round(diff / hr)}h ago`;
-	if (diff < 30 * day) return `${Math.round(diff / day)}d ago`;
-	return new Date(dateStr).toLocaleDateString();
 }
 
 // Group wikis by underlying repo so the grid shows one tile per repo. The
@@ -359,7 +346,7 @@ let filteredList = $derived.by(() => {
 								{#if wiki.generation_duration_ms}
 									<span>{formatDuration(wiki.generation_duration_ms)}</span>
 								{/if}
-								<span class="date">{new Date(wiki.created_at).toLocaleDateString()}</span>
+								<span class="date">{formatAppDate(wiki.created_at)}</span>
 							</div>
 						</div>
 						<button class="delete-btn" onclick={() => deleteWiki(wiki.id, getWikiDisplayName(wiki))}>
