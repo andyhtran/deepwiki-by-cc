@@ -18,7 +18,8 @@
 		"src/**/*.svelte",
 		"tests/**/*.js",
 		"tests/**/*.ts",
-		"tests/**/*.svelte"
+		"tests/**/*.svelte",
+		"evals/**/*.ts"
 	],
 	"exclude": [
 		"node_modules/**",

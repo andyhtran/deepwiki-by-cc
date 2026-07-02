@@ -1,0 +1,73 @@
+{
+	"judgeModel": "claude-sonnet-4-6",
+	"repos": [
+		{
+			"name": "self",
+			"source": ".",
+			"sha": "b69e8cb20bfd462a6c60a0d892f543817eddffa7",
+			"coreFiles": [
+				"src/lib/server/queue/handlers.ts",
+				"src/lib/server/queue/worker.ts",
+				"src/lib/server/ai/generator.ts",
+				"src/lib/server/ai/provider.ts",
+				"src/lib/server/ai/claude-cli.ts",
+				"src/lib/server/ai/codex-cli.ts",
+				"src/lib/server/ai/outline-normalizer.ts",
+				"src/lib/server/pipeline/scanner.ts",
+				"src/lib/server/pipeline/retriever.ts",
+				"src/lib/server/pipeline/git.ts",
+				"src/lib/server/prompts/outline.ts",
+				"src/lib/server/embeddings/retrieval.ts",
+				"src/lib/server/db/schema.sql"
+			],
+			"pairwiseTopics": [
+				{
+					"id": "job-queue",
+					"title": "Job queue, worker loop, and cancellation",
+					"keywords": ["worker", "job", "cancel", "abort", "claim", "pending", "processing"]
+				},
+				{
+					"id": "generation-pipeline",
+					"title": "Wiki generation pipeline (outline and pages)",
+					"keywords": [
+						"outline",
+						"generatePage",
+						"page generation",
+						"normalizer",
+						"post-processing"
+					]
+				},
+				{
+					"id": "retrieval",
+					"title": "Embeddings and retrieval modes",
+					"keywords": ["embedding", "chunk", "hybrid", "weakness", "retrieval", "fallback", "topK"]
+				},
+				{
+					"id": "scanning",
+					"title": "Repository scanning and filtering",
+					"keywords": ["scanner", "gitignore", "skip", "binary", "minified", "scan", "filter"]
+				},
+				{
+					"id": "providers",
+					"title": "AI provider invocation (Claude/Codex CLIs)",
+					"keywords": ["claude", "codex", "subprocess", "CLI", "stream", "spawn", "retry"]
+				},
+				{
+					"id": "sync-resume",
+					"title": "Sync, resume, and incremental updates",
+					"keywords": ["sync", "diff", "resume", "regenerate", "commit", "changed files"]
+				},
+				{
+					"id": "storage",
+					"title": "Database schema and persistence",
+					"keywords": ["schema", "sqlite", "table", "wiki_pages", "documents", "migration"]
+				},
+				{
+					"id": "frontend",
+					"title": "Wiki viewer and UI",
+					"keywords": ["viewer", "mermaid", "sidebar", "svelte", "component", "route", "settings"]
+				}
+			]
+		}
+	]
+}
