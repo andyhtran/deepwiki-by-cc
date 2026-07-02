@@ -2,7 +2,7 @@
 
 Generate comprehensive, navigable wikis for any GitHub repository or local codebase using Claude or Codex.
 
-Point DeepWiki at a repo and it will clone it, scan the source files, generate a structured outline and per-page documentation with Mermaid diagrams, and serve the result as a browsable wiki — all in a few minutes.
+Point DeepWiki at a repo and it will clone it, scan the source files, generate a structured outline, and then write each page with an agent that explores the actual code — reading files, following imports, and searching for callers with read-only tools — before serving the result as a browsable wiki with Mermaid diagrams.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/andyhtran/deepwiki-by-cc)
 ![License](https://img.shields.io/github/license/andyhtran/deepwiki-by-cc?style=flat-square)
@@ -16,12 +16,13 @@ Point DeepWiki at a repo and it will clone it, scan the source files, generate a
 
 ## Features
 
+- **Agentic page generation** — each page is written by an agent running inside the repo checkout with read-only tools (read, grep, glob). It starts from the outline's seed files, traces behavior across the codebase, and verifies claims against the code it actually read. Measurably deeper and more accurate than one-shot context injection ([eval results](docs/eval-results/2026-07-01-agentic-vs-injected.md)).
 - **Claude or Codex** — pick between Claude Sonnet/Opus or Codex CLI (gpt-5.5) per wiki, with streaming progress and configurable page concurrency.
 - **GitHub or local** — point at `owner/repo`, a full GitHub URL, or any local directory. `.gitignore`-aware scanning that filters out binaries, lock files, and generated code.
 - **Structured output** — AI-generated outline with sections and pages, rendered with Mermaid diagrams, syntax highlighting, sidebar navigation, and a per-page table of contents.
-- **Semantic retrieval** — optional embeddings with hybrid (file-scoped + global fallback) search, token-aware chunking, and a built-in ANN index. Falls back to full-file context if embedding fails.
-- **Versioned wikis** — keep multiple versions per repo, each tagged with the model and embedding config used to generate it. Switch between versions from the sidebar.
-- **Sync & resume** — pull latest commits and selectively regenerate only the pages affected by the diff. Resume picks up where interrupted runs left off.
+- **Versioned wikis** — keep multiple versions per repo, each tagged with the model used to generate it. Switch between versions from the sidebar.
+- **Sync & resume** — pull latest commits and agentically re-verify only the pages affected by the diff. Resume picks up where interrupted runs left off.
+- **Built-in evals** — a benchmarking harness (deterministic metrics + LLM-judged QA and pairwise comparison) for proving pipeline changes actually improve wiki quality. See [docs/evals.md](docs/evals.md).
 - **Self-hosted** — one-command Docker setup with persistent credential volumes, private-repo support via `GH_TOKEN`, and ~850 MB image footprint.
 
 <p align="center">
@@ -61,19 +62,15 @@ You can also point DeepWiki at a local directory:
 ## How It Works
 
 1. **Clone & scan** — clones the repo (or reads a local directory), walks the file tree while respecting `.gitignore`, and filters out binaries, lock files, generated code, and minified bundles.
-2. **Generate outline** — sends the file tree and README to the selected generation model, which returns a structured wiki outline with sections, pages, and file assignments.
-3. **Generate pages** — each page is generated in parallel (configurable concurrency), with relevant source files injected as context. Mermaid diagrams are included where they help explain architecture or flow.
+2. **Generate outline** — sends the file tree and README to the selected generation model, which returns a structured wiki outline with sections, pages, and seed file assignments.
+3. **Generate pages agentically** — each page is written by an agent running inside the repo checkout, in parallel (configurable concurrency). The agent starts from the page's seed files, then explores with read-only tools — following imports, grepping for callers, checking configuration and defaults — before writing. Per-page spend and time caps bound the exploration. Mermaid diagrams are included where they help explain architecture or flow.
 4. **Serve** — the wiki is stored in SQLite and served through a SvelteKit app with syntax highlighting, Mermaid rendering, a sidebar navigation tree, and a table of contents.
 
 ### Keeping wikis up to date
 
-- **Sync** — pulls latest commits and selectively regenerates only the pages affected by the diff. Page metadata (model, tokens, timing) is updated even when content doesn't change.
+- **Sync** — pulls latest commits and selects only the pages whose source files were touched by the diff. Each affected page gets an agentic update pass: the agent reads the diff, inspects the updated checkout, and rewrites the page (or reports that no changes are needed). Page metadata (model, tokens, timing) is updated even when content doesn't change.
 - **Resume** — if generation is interrupted or individual pages fail, resume picks up where it left off.
 - **Regenerate** — full regeneration from scratch.
-
-### Version metadata
-
-Each wiki version records the generation model and embedding configuration that was active at creation time. When embeddings are enabled, the wiki stores the embedding model name and an endpoint fingerprint so that different embedding providers don't cross-contaminate search results. The version selector in the sidebar shows per-version stats and an "emb" indicator for embedding-enabled versions.
 
 ## Settings
 
@@ -83,32 +80,8 @@ Visit `/settings` in the UI to configure:
 |---------|---------|---------|
 | Model | Claude Sonnet 4.6 | Sonnet 4.6, Opus 4.6, gpt-5.5 (medium), gpt-5.5 (xhigh) |
 | Parallel page limit | 2 | 1–5 |
-| Embeddings retrieval | Disabled | Optional OpenAI-compatible endpoint + model |
 
-When Codex is selected, DeepWiki uses `codex exec` with model `gpt-5.5` and the selected reasoning effort.
-
-When embeddings are enabled, DeepWiki indexes file chunks in SQLite and retrieves top semantic chunks for page generation context. Configure the embedding endpoint as a full URL (for example, `https://api.openai.com/v1/embeddings` or your proxy equivalent). Advanced retrieval/chunking controls stay collapsed in the UI and default to a low-touch profile (`topK=10`, `maxContextChars=16000`, `chunkSize=1200`, `chunkOverlap=200`). If embedding retrieval fails, it falls back to full-file context injection.
-
-### Retrieval Modes
-
-DeepWiki can retrieve generation context in either `constrained` or `hybrid_auto` mode:
-
-| Mode | Description |
-|------|-------------|
-| `constrained` | File-scoped retrieval using the page's assigned file paths |
-| `hybrid_auto` | Tries constrained retrieval first, then falls back to global search if results look weak |
-
-In `hybrid_auto` mode, constrained retrieval runs first. If the results are detected as weak (too few chunks, low similarity scores, or flat score distribution), DeepWiki automatically falls back to a global search across all indexed chunks in the repository, then merges and deduplicates the results.
-
-**Weakness detection thresholds** (configurable in Settings > Advanced):
-- Min chunks: 3 — triggers fallback if fewer chunks returned
-- Min context chars: 4,000 — triggers if total context is too short
-- Min top score: 0.3 — triggers if best match similarity is low
-- Min score gap: 0.05 — triggers if scores are too flat (no clear winner)
-
-**Token-aware chunking**: Chunks can be sized by token count instead of characters. When enabled (`tokenAware: true`), the chunker targets 700 tokens per chunk with 120 tokens of overlap, using the `cl100k_base` tokenizer.
-
-**ANN index**: An ANN (approximate nearest neighbor) index manifest is built per repo after embedding indexing. Currently backed by exact cosine scan over all embeddings; the interface is forward-compatible with native ANN backends (HNSW, etc.) for larger repos.
+When Codex is selected, DeepWiki uses `codex exec` with model `gpt-5.5` and the selected reasoning effort, exploring inside a read-only sandbox. (One quirk discovered along the way: `codex exec --output-schema` suppresses tool use entirely, so Codex page runs are schema-less and return the page as their final message.)
 
 ## Self-Hosting with Docker
 
@@ -181,6 +154,8 @@ bun run check     # Type check
 bun run build     # Production build
 bun run start     # Start production server (port 8080)
 ```
+
+Wiki quality is measured with a local eval harness (`just eval <label>`) — deterministic metrics plus LLM-judged QA and pairwise comparison against golden repos pinned to fixed commits. See [docs/evals.md](docs/evals.md).
 
 ## Tech Stack
 

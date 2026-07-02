@@ -19,7 +19,7 @@ biome check          # Use bun run lint
 
 ## Type Checking
 
-Uses **zvelte-check** (flattened tsconfig, no `extends`). Do not add `extends` back to tsconfig.json.
+Uses **zvelte-check** via `bun run check`. tsconfig.json extends `./.svelte-kit/tsconfig.json` (requires `svelte-kit sync` first; the check script runs it automatically).
 
 ## Testing
 

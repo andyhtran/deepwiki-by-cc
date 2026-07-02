@@ -3,9 +3,7 @@ import { formatRelativeTime, parseAppTimestamp } from "$lib/datetime.js";
 
 describe("app timestamp formatting", () => {
 	test("treats SQLite timestamps as UTC", () => {
-		expect(parseAppTimestamp("2026-06-14 06:00:01")).toBe(
-			Date.parse("2026-06-14T06:00:01Z"),
-		);
+		expect(parseAppTimestamp("2026-06-14 06:00:01")).toBe(Date.parse("2026-06-14T06:00:01Z"));
 	});
 
 	test("preserves explicit ISO timezones", () => {
