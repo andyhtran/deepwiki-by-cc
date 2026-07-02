@@ -1,65 +1,13 @@
+import { findTopLevelMermaidFences } from "$lib/markdown-fences.js";
+
 const MAX_DIAGRAMS_PER_PAGE = 2;
 
-export interface MermaidFencedBlock {
-	/** Offset of the opening fence line. */
-	start: number;
-	/** Offset just past the closing fence marker (before its newline). */
-	end: number;
-	code: string;
-}
-
-/**
- * Fence-aware scan for top-level mermaid blocks. Pages that document mermaid
- * handling legitimately contain "```mermaid" inside inline code spans and
- * quoted code blocks; naive regex matching mistakes that documentation for
- * diagrams — and the policy below REMOVES over-cap blocks, so a false match
- * would corrupt quoted code. CommonMark rules applied: fences open at line
- * start (≤3 spaces indent) and close only on a bare marker of the same
- * character and at least the same length.
- */
-export function findTopLevelMermaidFences(content: string): MermaidFencedBlock[] {
-	const blocks: MermaidFencedBlock[] = [];
-	const lines = content.split("\n");
-	let offset = 0;
-	let open: {
-		char: string;
-		len: number;
-		isMermaid: boolean;
-		start: number;
-		codeLines: string[];
-	} | null = null;
-
-	for (const line of lines) {
-		const m = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-		if (m) {
-			const marker = m[1];
-			const rest = m[2].trim();
-			if (!open) {
-				const info = rest.split(/\s+/)[0]?.toLowerCase() ?? "";
-				open = {
-					char: marker[0],
-					len: marker.length,
-					isMermaid: info === "mermaid",
-					start: offset,
-					codeLines: [],
-				};
-			} else if (marker[0] === open.char && marker.length >= open.len && rest === "") {
-				if (open.isMermaid) {
-					const code = open.codeLines.join("\n").trim();
-					if (code) blocks.push({ start: open.start, end: offset + line.length, code });
-				}
-				open = null;
-			} else {
-				open.codeLines.push(line);
-			}
-		} else if (open) {
-			open.codeLines.push(line);
-		}
-		offset += line.length + 1;
-	}
-
-	return blocks;
-}
+// Re-exported so policy consumers (evals) get the scanner and the validators
+// from one module. The implementation lives in $lib/markdown-fences.ts because
+// the client-side wiki renderer must split on identical fence semantics —
+// this policy REMOVES over-cap blocks, so any parsing disagreement between
+// the layers corrupts quoted code or renders phantom diagrams.
+export { findTopLevelMermaidFences, type MermaidFencedBlock } from "$lib/markdown-fences.js";
 
 const VALID_MERMAID_TYPES = [
 	"graph",
@@ -163,6 +111,8 @@ export function enforceDiagramPolicy(
 		newContent = newContent.slice(0, block.start) + newContent.slice(cutEnd);
 	}
 
-	const diagrams = extractMermaidDiagrams(newContent);
+	// keepBlocks already holds the surviving blocks in document order — no
+	// need to re-scan the rebuilt content.
+	const diagrams = keepBlocks.map((b) => b.code).filter(isValidMermaidSyntax);
 	return { content: newContent, diagrams };
 }

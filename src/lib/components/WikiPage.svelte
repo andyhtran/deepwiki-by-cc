@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { Tokens } from "marked";
+import { splitOnMermaidFences } from "$lib/markdown-fences.js";
 import MermaidDiagram from "./MermaidDiagram.svelte";
 
 export interface PageHeading {
@@ -50,28 +51,6 @@ $effect(() => {
 
 	renderMarkdown(page.content);
 });
-
-// Split markdown on ```mermaid fences into ordered chunks so that each mermaid
-// block renders inline at its authored position, not in a trailing appendix.
-function splitOnMermaid(
-	markdown: string,
-): Array<{ type: "text"; value: string } | { type: "mermaid"; code: string }> {
-	const chunks: Array<{ type: "text"; value: string } | { type: "mermaid"; code: string }> = [];
-	const regex = /```mermaid\n([\s\S]*?)```/g;
-	let lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = regex.exec(markdown)) !== null) {
-		if (match.index > lastIndex) {
-			chunks.push({ type: "text", value: markdown.slice(lastIndex, match.index) });
-		}
-		chunks.push({ type: "mermaid", code: match[1].trim() });
-		lastIndex = match.index + match[0].length;
-	}
-	if (lastIndex < markdown.length) {
-		chunks.push({ type: "text", value: markdown.slice(lastIndex) });
-	}
-	return chunks;
-}
 
 async function renderMarkdown(markdown: string) {
 	const { marked } = await import("marked");
@@ -144,7 +123,7 @@ async function renderMarkdown(markdown: string) {
 		return `<h${depth} id="${id}">${text}</h${depth}>`;
 	};
 
-	const chunks = splitOnMermaid(markdown);
+	const chunks = splitOnMermaidFences(markdown);
 	const nextSegments: Segment[] = [];
 
 	for (const chunk of chunks) {
