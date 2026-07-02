@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import type { EmbeddingSnapshot, Job, WikiOutline } from "$lib/types.js";
+import type { Job, WikiOutline } from "$lib/types.js";
 import {
 	type GenerationUsage,
 	generateOutline,
@@ -7,19 +7,13 @@ import {
 	generatePageUpdate,
 } from "../ai/generator.js";
 import { normalizeOutline } from "../ai/outline-normalizer.js";
-import {
-	calculateCost,
-	type EffectiveEmbeddingConfig,
-	getEffectiveConfig,
-	resolveGenerationModel,
-} from "../config.js";
+import { calculateCost, getEffectiveConfig, resolveGenerationModel } from "../config.js";
 import {
 	deleteDocumentsByPaths,
 	getDocumentsWithHashByRepo,
 	getRepoFilePaths,
 	insertDocument,
 } from "../db/documents.js";
-import { deleteEmbeddingDataByPaths } from "../db/embeddings.js";
 import { updateJobParams, updateJobWikiId } from "../db/jobs.js";
 import { createRepo, getRepo, updateRepo } from "../db/repos.js";
 import { getAllSettings } from "../db/settings.js";
@@ -32,9 +26,6 @@ import {
 	updateWiki,
 	updateWikiPage,
 } from "../db/wikis.js";
-import { buildAnnIndex } from "../embeddings/ann.js";
-import { createEndpointFingerprint } from "../embeddings/client.js";
-import { refreshEmbeddingsForScannedFiles } from "../embeddings/indexer.js";
 import { log } from "../logger.js";
 import {
 	cloneRepo,
@@ -66,18 +57,11 @@ function accumulateUsage(
 ): void {
 	totals.promptTokens += usage.promptTokens;
 	totals.completionTokens += usage.completionTokens;
-	totals.cost += calculateCost(usage.modelId, usage.promptTokens, usage.completionTokens);
-}
-
-function buildEmbeddingSnapshot(embeddings: EffectiveEmbeddingConfig): EmbeddingSnapshot {
-	if (!embeddings.enabled) {
-		return { enabled: false, model: null, endpointFingerprint: null };
-	}
-	return {
-		enabled: true,
-		model: embeddings.model,
-		endpointFingerprint: createEndpointFingerprint(embeddings.baseUrl),
-	};
+	// Prefer the CLI-reported cost: it prices cache creation/reads correctly,
+	// which the token-rate estimate cannot fully reconstruct.
+	totals.cost +=
+		usage.costUsd ??
+		calculateCost(usage.modelId, usage.promptTokens, usage.completionTokens, usage.cachedTokens);
 }
 
 export async function handleFullGeneration(
@@ -108,9 +92,8 @@ export async function handleFullGeneration(
 	const generationModel = resolveGenerationModel(
 		typeof params.generationModel === "string" ? params.generationModel : effective.generationModel,
 	);
-	const embeddingSnapshot = buildEmbeddingSnapshot(effective.embeddings);
-	// Persist both generation model and embedding snapshot in job params
-	updateJobParams(job.id, { ...params, generationModel, embeddingSnapshot });
+	// Persist the resolved generation model in job params
+	updateJobParams(job.id, { ...params, generationModel });
 
 	log.generation.info(
 		{ repo: `${parsed.owner}/${parsed.name}`, model: generationModel },
@@ -176,33 +159,9 @@ export async function handleFullGeneration(
 			insertDocument({
 				repo_id: repo.id,
 				file_path: file.filePath,
-				language: file.language,
-				content: file.content,
 				content_hash: file.contentHash,
 			});
 		}
-	}
-
-	if (effective.embeddings.enabled) {
-		progress(9, "Refreshing embeddings index...");
-		const embeddingSummary = await refreshEmbeddingsForScannedFiles({
-			repoId: repo.id,
-			files,
-			embeddingConfig: effective.embeddings,
-		});
-		log.generation.info(
-			{
-				repoId: repo.id,
-				considered: embeddingSummary.consideredFiles,
-				indexed: embeddingSummary.indexedFiles,
-				skipped: embeddingSummary.skippedFiles,
-				failed: embeddingSummary.failedFiles.length,
-			},
-			"embedding refresh complete",
-		);
-
-		// Build/refresh ANN index for global retrieval
-		buildAnnIndex(repo.id, effective.embeddings.model, effective.embeddings.baseUrl);
 	}
 
 	// Phase C: Generate wiki
@@ -260,9 +219,6 @@ export async function handleFullGeneration(
 		}),
 		model: generationModel,
 		source_type: sourceType,
-		embedding_enabled: embeddingSnapshot.enabled ? 1 : 0,
-		embedding_model: embeddingSnapshot.model,
-		embedding_endpoint_fingerprint: embeddingSnapshot.endpointFingerprint,
 	});
 
 	updateJobWikiId(job.id, wiki.id);
@@ -309,7 +265,6 @@ export async function handleFullGeneration(
 				const startTime = Date.now();
 				try {
 					const { content, diagrams, usage } = await generatePage({
-						repoId: repo.id,
 						repoName: `${parsed.owner}/${parsed.name}`,
 						repoUrl: parsed.url,
 						defaultBranch,
@@ -318,6 +273,7 @@ export async function handleFullGeneration(
 						sectionTitle,
 						outline,
 						generationModel,
+						clonePath,
 					});
 
 					const generationTimeMs = Date.now() - startTime;
@@ -389,8 +345,7 @@ export async function handleSync(
 	const generationModel = resolveGenerationModel(
 		typeof params.generationModel === "string" ? params.generationModel : effective.generationModel,
 	);
-	const embeddingSnapshot = buildEmbeddingSnapshot(effective.embeddings);
-	updateJobParams(job.id, { ...params, generationModel, embeddingSnapshot });
+	updateJobParams(job.id, { ...params, generationModel });
 
 	if (!owner || !repoName) {
 		throw new Error("Missing required params: owner, repo");
@@ -430,7 +385,7 @@ export async function handleSync(
 	const shortSha = repo.last_commit_sha.slice(0, 7);
 	const changeTitle = `Sync: ${diffResult.commitCount} commit${diffResult.commitCount === 1 ? "" : "s"} since ${shortSha}`;
 
-	await rescanChangedFiles(repo.id, clonePath, changedFiles, effective.embeddings, progress);
+	await rescanChangedFiles(repo.id, clonePath, changedFiles, progress);
 
 	const wikiOutline = JSON.parse(wiki.structure) as WikiOutline;
 	const { buildOutlineSummary } = await import("../ai/generator.js");
@@ -443,7 +398,7 @@ export async function handleSync(
 		: fileSummary;
 
 	const result = await updateAffectedPages(
-		repo.id,
+		clonePath,
 		wiki,
 		changedFiles,
 		changeTitle,
@@ -470,12 +425,10 @@ async function rescanChangedFiles(
 	repoId: number,
 	clonePath: string,
 	changedFiles: string[],
-	embeddingConfig: ReturnType<typeof getEffectiveConfig>["embeddings"],
 	progress: ProgressFn,
 ): Promise<void> {
 	progress(30, `Re-scanning ${changedFiles.length} changed files...`);
 	deleteDocumentsByPaths(repoId, changedFiles);
-	deleteEmbeddingDataByPaths(repoId, changedFiles);
 
 	const { scanRepository: scan } = await import("../pipeline/scanner.js");
 	const allFiles = scan(clonePath);
@@ -485,37 +438,13 @@ async function rescanChangedFiles(
 		insertDocument({
 			repo_id: repoId,
 			file_path: file.filePath,
-			language: file.language,
-			content: file.content,
 			content_hash: file.contentHash,
 		});
 	}
-
-	if (!embeddingConfig.enabled || changedScanned.length === 0) return;
-
-	progress(40, "Refreshing embeddings for changed files...");
-	const embeddingSummary = await refreshEmbeddingsForScannedFiles({
-		repoId,
-		files: changedScanned,
-		embeddingConfig,
-	});
-	log.generation.info(
-		{
-			repoId,
-			considered: embeddingSummary.consideredFiles,
-			indexed: embeddingSummary.indexedFiles,
-			skipped: embeddingSummary.skippedFiles,
-			failed: embeddingSummary.failedFiles.length,
-		},
-		"sync embedding refresh complete",
-	);
-
-	// Rebuild ANN index after sync updates
-	buildAnnIndex(repoId, embeddingConfig.model, embeddingConfig.baseUrl);
 }
 
 async function updateAffectedPages(
-	repoId: number,
+	clonePath: string,
 	wiki: { id: number },
 	changedFiles: string[],
 	title: string,
@@ -578,7 +507,6 @@ async function updateAffectedPages(
 						diagrams: updatedDiagrams,
 						usage,
 					} = await generatePageUpdate({
-						repoId,
 						repoName,
 						repoUrl,
 						defaultBranch,
@@ -591,6 +519,7 @@ async function updateAffectedPages(
 						filePaths,
 						outline: outlineSummary,
 						generationModel,
+						clonePath,
 					});
 
 					const generationTimeMs = Date.now() - startTime;
@@ -666,8 +595,13 @@ export async function handleResumeGeneration(
 	const generationModel = resolveGenerationModel(
 		typeof params.generationModel === "string" ? params.generationModel : effective.generationModel,
 	);
-	const embeddingSnapshot = buildEmbeddingSnapshot(effective.embeddings);
-	updateJobParams(job.id, { ...params, generationModel, embeddingSnapshot });
+	updateJobParams(job.id, { ...params, generationModel });
+
+	// Page agents explore the checkout, so resume needs it on disk.
+	const clonePath = repo.clone_path;
+	if (!clonePath) {
+		throw new Error("Repo has no clone on disk — regenerate the wiki instead of resuming");
+	}
 
 	const outline = JSON.parse(wiki.structure) as WikiOutline;
 	const repoFilePaths = getRepoFilePaths(repo.id);
@@ -717,7 +651,6 @@ export async function handleResumeGeneration(
 				const startTime = Date.now();
 				try {
 					const { content, diagrams, usage } = await generatePage({
-						repoId: repo.id,
 						repoName: `${repo.owner}/${repo.name}`,
 						repoUrl: repo.url,
 						defaultBranch: repo.default_branch,
@@ -726,6 +659,7 @@ export async function handleResumeGeneration(
 						sectionTitle,
 						outline,
 						generationModel,
+						clonePath,
 					});
 
 					const generationTimeMs = Date.now() - startTime;

@@ -21,6 +21,12 @@ interface CodexCliOptions {
 	reasoningEffort: string;
 	timeoutMs?: number;
 	jsonSchema?: Record<string, unknown>;
+	/**
+	 * Working directory for codex exec. With the read-only sandbox this is
+	 * what lets the agent explore a repo checkout; codex has no per-tool
+	 * restriction flags, so the sandbox is the guardrail.
+	 */
+	cwd?: string;
 }
 
 interface CodexCliResult {
@@ -30,6 +36,8 @@ interface CodexCliResult {
 	durationMs?: number;
 	inputTokens?: number;
 	outputTokens?: number;
+	/** Subset of inputTokens served from OpenAI's prompt cache (billed at ~10%). */
+	cachedInputTokens?: number;
 }
 
 interface CodexJsonEvent {
@@ -53,6 +61,7 @@ interface CodexStreamState {
 	agentMessages: string[];
 	inputTokens?: number;
 	outputTokens?: number;
+	cachedInputTokens?: number;
 	isError: boolean;
 	errorMessage?: string;
 }
@@ -178,6 +187,7 @@ function consumeCodexEventLine(line: string, state: CodexStreamState): void {
 	if (event.type === "turn.completed" && event.usage) {
 		state.inputTokens = event.usage.input_tokens;
 		state.outputTokens = event.usage.output_tokens;
+		state.cachedInputTokens = event.usage.cached_input_tokens;
 	}
 
 	if (event.type === "error") {
@@ -299,6 +309,7 @@ async function spawnCodex(options: CodexCliOptions): Promise<CodexCliResult> {
 	return new Promise<CodexCliResult>((resolve, reject) => {
 		const proc = nodeSpawn("codex", args, {
 			stdio: ["pipe", "pipe", "pipe"],
+			cwd: options.cwd,
 		});
 		activeProcesses.add(proc);
 
@@ -411,6 +422,7 @@ async function spawnCodex(options: CodexCliOptions): Promise<CodexCliResult> {
 				durationMs,
 				inputTokens: streamState.inputTokens,
 				outputTokens: streamState.outputTokens,
+				cachedInputTokens: streamState.cachedInputTokens,
 			});
 		});
 	});

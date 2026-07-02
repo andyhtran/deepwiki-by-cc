@@ -22,6 +22,18 @@ describe("calculateCost", () => {
 		expect(cost).toBe(0);
 	});
 
+	test("prices cached input tokens at 10% of the input rate", () => {
+		// gpt-5.5: input $1.75/M, output $14/M. 1M input with 800K cached:
+		// 200K * 1.75/M + 800K * 0.175/M + 0 output = 0.35 + 0.14
+		const cost = calculateCost("gpt-5.5", 1_000_000, 0, 800_000);
+		expect(cost).toBeCloseTo(0.49);
+	});
+
+	test("clamps cached tokens to the prompt token count", () => {
+		const cost = calculateCost("gpt-5.5", 1000, 0, 5000);
+		expect(cost).toBeCloseTo((1000 / 1_000_000) * 1.75 * 0.1);
+	});
+
 	test("returns correct cost for gpt-5.5 model", () => {
 		const cost = calculateCost("gpt-5.5-xhigh", 1000, 1000);
 		// input: 1.75/1k tokens, output: 14.0/1k tokens → (1000/1000)*1.75/1000 + (1000/1000)*14.0/1000

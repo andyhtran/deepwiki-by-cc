@@ -17,6 +17,16 @@ interface ClaudeCliOptions {
 	model?: string;
 	timeoutMs?: number;
 	jsonSchema?: Record<string, unknown>;
+	/** Working directory for the CLI process — the root the agent's tools see. */
+	cwd?: string;
+	/**
+	 * Agentic mode: restrict the CLI to exactly these tools (e.g. Read, Grep,
+	 * Glob) and auto-approve them. When omitted, the CLI runs as a one-shot
+	 * text generator with permissions skipped (legacy behavior).
+	 */
+	tools?: readonly string[];
+	/** Spend cap for one invocation (only honored in print mode). */
+	maxBudgetUsd?: number;
 }
 
 interface ClaudeCliResult {
@@ -52,6 +62,21 @@ interface ClaudeStreamEvent {
 		cache_creation_input_tokens?: number;
 		cache_read_input_tokens?: number;
 	};
+}
+
+// The CLI's usage.input_tokens counts only uncached tokens; most of a request's
+// input arrives as cache creation/reads. Sum all three so token stats reflect
+// what was actually submitted.
+function totalInputTokens(usage: {
+	input_tokens?: number;
+	cache_creation_input_tokens?: number;
+	cache_read_input_tokens?: number;
+}): number {
+	return (
+		(usage.input_tokens ?? 0) +
+		(usage.cache_creation_input_tokens ?? 0) +
+		(usage.cache_read_input_tokens ?? 0)
+	);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -125,8 +150,20 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 		"stream-json",
 		"--verbose",
 		"--no-session-persistence",
-		"--dangerously-skip-permissions",
 	];
+
+	if (options.tools && options.tools.length > 0) {
+		// --tools removes everything else from the tool set (hard boundary);
+		// --allowedTools pre-approves the survivors so print mode never blocks
+		// on a permission prompt.
+		const toolList = options.tools.join(",");
+		args.push("--tools", toolList, "--allowedTools", toolList);
+		if (options.maxBudgetUsd) {
+			args.push("--max-budget-usd", String(options.maxBudgetUsd));
+		}
+	} else {
+		args.push("--dangerously-skip-permissions");
+	}
 
 	if (options.model) {
 		args.push("--model", options.model);
@@ -142,7 +179,10 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 
 	const model = options.model || "default";
 	const promptLen = options.prompt.length;
-	log.cli.info({ model, promptChars: promptLen }, "spawning claude");
+	log.cli.info(
+		{ model, promptChars: promptLen, cwd: options.cwd, tools: options.tools?.join(",") },
+		"spawning claude",
+	);
 
 	const env = { ...process.env };
 	delete env.CLAUDECODE;
@@ -151,6 +191,7 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 		const proc = nodeSpawn("claude", args, {
 			stdio: ["ignore", "pipe", "pipe"],
 			env,
+			cwd: options.cwd,
 		});
 		activeProcesses.add(proc);
 
@@ -193,7 +234,7 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 						}
 					}
 					if (event.message.usage) {
-						inputTokens = event.message.usage.input_tokens;
+						inputTokens = totalInputTokens(event.message.usage);
 						outputTokens = event.message.usage.output_tokens;
 					}
 				}
@@ -212,7 +253,7 @@ async function spawnClaude(options: ClaudeCliOptions): Promise<ClaudeCliResult> 
 						errorResult = event.result;
 					}
 					if (event.usage) {
-						inputTokens = event.usage.input_tokens;
+						inputTokens = totalInputTokens(event.usage);
 						outputTokens = event.usage.output_tokens;
 					}
 				}
