@@ -127,8 +127,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			status: v.status,
 			page_count: v.page_count,
 			created_at: v.created_at,
-			embedding_enabled: v.embedding_enabled,
-			embedding_model: v.embedding_model,
 		})),
 		currentVersion: wiki.version,
 		activeJobId,
@@ -140,12 +138,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		// updates like clone_path changes or `/api/generate` upserts). Prefer
 		// the wiki's completed job timestamp; fall back to wiki.updated_at.
 		lastIndexedAt: job?.completed_at ?? wiki.updated_at ?? null,
-		embeddingInfo: wiki.embedding_enabled
-			? {
-					model: wiki.embedding_model,
-					fingerprint: wiki.embedding_endpoint_fingerprint?.slice(-8) ?? null,
-				}
-			: null,
 		jobStats: job
 			? {
 					totalPromptTokens: job.total_prompt_tokens,

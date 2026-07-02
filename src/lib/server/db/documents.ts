@@ -1,21 +1,21 @@
 import { getDb } from "./index.js";
 
+// Documents are a per-repo index of scanned file paths + content hashes.
+// Page agents read source from the checkout on disk, so file CONTENT is
+// deliberately not persisted — the index only powers link-policy file lists,
+// changed-file matching on sync, and skip-unchanged dedupe on regeneration.
 export function insertDocument(data: {
 	repo_id: number;
 	file_path: string;
-	language: string | null;
-	content: string;
 	content_hash: string;
 }): void {
 	const db = getDb();
 	db.prepare(`
-		INSERT INTO documents (repo_id, file_path, language, content, content_hash)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO documents (repo_id, file_path, content_hash)
+		VALUES (?, ?, ?)
 		ON CONFLICT(repo_id, file_path) DO UPDATE SET
-			language = excluded.language,
-			content = excluded.content,
 			content_hash = excluded.content_hash
-	`).run(data.repo_id, data.file_path, data.language, data.content, data.content_hash);
+	`).run(data.repo_id, data.file_path, data.content_hash);
 }
 
 export function deleteDocumentsByRepo(repoId: number): void {

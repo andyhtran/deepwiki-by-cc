@@ -1,5 +1,5 @@
-import { getActiveJobs } from "$lib/server/db/jobs.js";
 import { getEffectiveDisplayConfig } from "$lib/server/config.js";
+import { getActiveJobs } from "$lib/server/db/jobs.js";
 import { getAllSettings } from "$lib/server/db/settings.js";
 import { listWikis } from "$lib/server/db/wikis.js";
 import type { PageServerLoad } from "./$types.js";

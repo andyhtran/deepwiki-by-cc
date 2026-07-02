@@ -1,10 +1,4 @@
-import {
-	config,
-	GENERATION_MODELS,
-	getEffectiveConfig,
-	getEffectiveDisplayConfig,
-	getEffectiveRetrievalConfig,
-} from "$lib/server/config.js";
+import { config, GENERATION_MODELS, getEffectiveConfig } from "$lib/server/config.js";
 import { getAllSettings } from "$lib/server/db/settings.js";
 import type { PageServerLoad } from "./$types.js";
 
@@ -19,47 +13,18 @@ export const load: PageServerLoad = async () => {
 	}));
 
 	const effective = getEffectiveConfig(settings);
-	const display = getEffectiveDisplayConfig(settings);
-	const retrieval = getEffectiveRetrievalConfig(settings);
 
 	return {
 		current: {
 			generationModel: effective.generationModel,
 			parallelPageLimit: effective.parallelPageLimit,
-			display,
-			embeddings: effective.embeddings,
-			retrieval,
+			display: effective.display,
 		},
 		defaults: {
 			generationModel: config.generationModel,
 			parallelPageLimit: config.parallelPageLimit,
 			display: {
 				showRepoOwner: config.showRepoOwner,
-			},
-			embeddings: {
-				enabled: config.embeddingEnabled,
-				baseUrl: config.embeddingBaseUrl,
-				apiKey: "",
-				model: config.embeddingModel,
-				topK: config.embeddingTopK,
-				maxContextChars: config.embeddingMaxContextChars,
-				timeoutMs: config.embeddingRequestTimeoutMs,
-				chunkSize: config.embeddingChunkSize,
-				chunkOverlap: config.embeddingChunkOverlap,
-				batchSize: config.embeddingBatchSize,
-			},
-			retrieval: {
-				generation: {
-					mode: config.retrievalModeGeneration,
-					topK: config.embeddingTopK,
-					maxContextChars: config.embeddingMaxContextChars,
-				},
-				weakness: {
-					minChunks: config.weaknessMinChunks,
-					minContextChars: config.weaknessMinContextChars,
-					minTopScore: config.weaknessMinTopScore,
-					minScoreGap: config.weaknessMinScoreGap,
-				},
 			},
 		},
 		generationModels,

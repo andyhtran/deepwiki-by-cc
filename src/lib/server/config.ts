@@ -46,32 +46,16 @@ export const GENERATION_MODELS = {
 
 export type GenerationModelId = keyof typeof GENERATION_MODELS;
 
-export type RetrievalMode = "constrained" | "hybrid_auto";
-
 const DEFAULT_GENERATION_MODEL: GenerationModelId = "claude-sonnet-4-6";
 
 export const config = {
 	generationModel: DEFAULT_GENERATION_MODEL,
-	dataDir: resolve("./data"),
+	// DEEPWIKI_DATA_DIR must be set before this module is imported (the eval
+	// harness relies on it to isolate its SQLite data from the real one).
+	dataDir: resolve(process.env.DEEPWIKI_DATA_DIR ?? "./data"),
 	maxFileSize: 1048576,
 	maxFilesPerRepo: 10000,
 	parallelPageLimit: 2,
-	embeddingEnabled: false,
-	embeddingBaseUrl: "https://api.openai.com/v1/embeddings",
-	embeddingModel: "text-embedding-3-small",
-	embeddingTopK: 10,
-	embeddingMaxContextChars: 16_000,
-	embeddingRequestTimeoutMs: 30_000,
-	embeddingChunkSize: 1200,
-	embeddingChunkOverlap: 200,
-	embeddingBatchSize: 32,
-	// Retrieval mode default for page generation.
-	retrievalModeGeneration: "hybrid_auto",
-	// Weakness detection thresholds for hybrid_auto fallback
-	weaknessMinChunks: 3,
-	weaknessMinContextChars: 4000,
-	weaknessMinTopScore: 0.3,
-	weaknessMinScoreGap: 0.05,
 	showRepoOwner: true,
 } as const;
 
@@ -91,37 +75,6 @@ export function getGenerationModel(modelId: string): GenerationModelInfo | undef
 	return GENERATION_MODELS[modelId];
 }
 
-export interface EffectiveEmbeddingConfig {
-	enabled: boolean;
-	baseUrl: string;
-	apiKey: string;
-	model: string;
-	topK: number;
-	maxContextChars: number;
-	timeoutMs: number;
-	chunkSize: number;
-	chunkOverlap: number;
-	batchSize: number;
-}
-
-export interface WeaknessThresholds {
-	minChunks: number;
-	minContextChars: number;
-	minTopScore: number;
-	minScoreGap: number;
-}
-
-export interface SurfaceRetrievalConfig {
-	mode: RetrievalMode;
-	topK: number;
-	maxContextChars: number;
-}
-
-export interface EffectiveRetrievalConfig {
-	generation: SurfaceRetrievalConfig;
-	weakness: WeaknessThresholds;
-}
-
 export interface EffectiveDisplayConfig {
 	showRepoOwner: boolean;
 }
@@ -132,115 +85,6 @@ function parseBooleanSetting(value: string | undefined, fallback: boolean): bool
 	if (normalized === "true") return true;
 	if (normalized === "false") return false;
 	return fallback;
-}
-
-function parseIntegerSetting(
-	value: string | undefined,
-	fallback: number,
-	min: number,
-	max: number,
-): number {
-	if (value === undefined) return fallback;
-	const n = Number(value);
-	if (!Number.isFinite(n) || !Number.isInteger(n)) return fallback;
-	return Math.min(max, Math.max(min, n));
-}
-
-function parseFloatSetting(
-	value: string | undefined,
-	fallback: number,
-	min: number,
-	max: number,
-): number {
-	if (value === undefined) return fallback;
-	const n = Number(value);
-	if (!Number.isFinite(n)) return fallback;
-	return Math.min(max, Math.max(min, n));
-}
-
-function parseRetrievalMode(value: string | undefined, fallback: RetrievalMode): RetrievalMode {
-	if (value === "constrained" || value === "hybrid_auto") return value;
-	return fallback;
-}
-
-export function getEffectiveRetrievalConfig(
-	settings: Record<string, string>,
-): EffectiveRetrievalConfig {
-	return {
-		generation: {
-			mode: parseRetrievalMode(settings.retrievalModeGeneration, config.retrievalModeGeneration),
-			// Generation surfaces reuse the existing embedding topK/maxContextChars settings
-			topK: parseIntegerSetting(settings.embeddingsTopK, config.embeddingTopK, 1, 30),
-			maxContextChars: parseIntegerSetting(
-				settings.embeddingsMaxContextChars,
-				config.embeddingMaxContextChars,
-				1000,
-				200_000,
-			),
-		},
-		weakness: {
-			minChunks: parseIntegerSetting(settings.weaknessMinChunks, config.weaknessMinChunks, 1, 20),
-			minContextChars: parseIntegerSetting(
-				settings.weaknessMinContextChars,
-				config.weaknessMinContextChars,
-				500,
-				50_000,
-			),
-			minTopScore: parseFloatSetting(
-				settings.weaknessMinTopScore,
-				config.weaknessMinTopScore,
-				0,
-				1,
-			),
-			minScoreGap: parseFloatSetting(
-				settings.weaknessMinScoreGap,
-				config.weaknessMinScoreGap,
-				0,
-				1,
-			),
-		},
-	};
-}
-
-export function getEffectiveEmbeddingConfig(
-	settings: Record<string, string>,
-): EffectiveEmbeddingConfig {
-	const baseUrl = (settings.embeddingsBaseUrl || config.embeddingBaseUrl).trim();
-	const model = (settings.embeddingsModel || config.embeddingModel).trim();
-	const apiKey = settings.embeddingsApiKey || "";
-
-	return {
-		enabled: parseBooleanSetting(settings.embeddingsEnabled, config.embeddingEnabled),
-		baseUrl: baseUrl.length > 0 ? baseUrl : config.embeddingBaseUrl,
-		apiKey,
-		model: model.length > 0 ? model : config.embeddingModel,
-		topK: parseIntegerSetting(settings.embeddingsTopK, config.embeddingTopK, 1, 30),
-		maxContextChars: parseIntegerSetting(
-			settings.embeddingsMaxContextChars,
-			config.embeddingMaxContextChars,
-			1000,
-			200_000,
-		),
-		timeoutMs: parseIntegerSetting(
-			settings.embeddingsTimeoutMs,
-			config.embeddingRequestTimeoutMs,
-			1000,
-			120_000,
-		),
-		chunkSize: parseIntegerSetting(
-			settings.embeddingsChunkSize,
-			config.embeddingChunkSize,
-			200,
-			8000,
-		),
-		chunkOverlap: parseIntegerSetting(
-			settings.embeddingsChunkOverlap,
-			config.embeddingChunkOverlap,
-			0,
-			2000,
-		),
-		batchSize: parseIntegerSetting(settings.embeddingsBatchSize, config.embeddingBatchSize, 1, 128),
-	};
 }
 
 export function getEffectiveDisplayConfig(
@@ -254,8 +98,6 @@ export function getEffectiveDisplayConfig(
 export function getEffectiveConfig(settings: Record<string, string>): {
 	generationModel: GenerationModelId;
 	parallelPageLimit: number;
-	embeddings: EffectiveEmbeddingConfig;
-	retrieval: EffectiveRetrievalConfig;
 	display: EffectiveDisplayConfig;
 } {
 	const raw = Number(settings.parallelPageLimit);
@@ -265,8 +107,6 @@ export function getEffectiveConfig(settings: Record<string, string>): {
 	return {
 		generationModel: resolveGenerationModel(settings.generationModel),
 		parallelPageLimit,
-		embeddings: getEffectiveEmbeddingConfig(settings),
-		retrieval: getEffectiveRetrievalConfig(settings),
 		display: getEffectiveDisplayConfig(settings),
 	};
 }
@@ -281,12 +121,21 @@ for (const [id, info] of Object.entries(GENERATION_MODELS)) {
 	}
 }
 
+// OpenAI bills cached input at 10% of the normal input rate. Claude runs
+// don't use this path (the CLI reports exact cost), so a single ratio for
+// codex-cli models is sufficient.
+const CACHED_INPUT_PRICE_RATIO = 0.1;
+
 export function calculateCost(
 	modelId: string,
 	promptTokens: number,
 	completionTokens: number,
+	cachedTokens = 0,
 ): number {
 	const pricing = MODEL_PRICING[modelId];
 	if (!pricing) return 0;
-	return (promptTokens / 1000) * pricing.input + (completionTokens / 1000) * pricing.output;
+	const cached = Math.min(Math.max(cachedTokens, 0), promptTokens);
+	const freshInputCost = ((promptTokens - cached) / 1000) * pricing.input;
+	const cachedInputCost = (cached / 1000) * pricing.input * CACHED_INPUT_PRICE_RATIO;
+	return freshInputCost + cachedInputCost + (completionTokens / 1000) * pricing.output;
 }
