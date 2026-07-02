@@ -91,14 +91,16 @@ const judgeModel = resolveGenerationModel(args["judge-model"] ?? evalConfig.judg
 
 /** Deterministic page pick: keyword hits (title weighted 5x) per 1k words. */
 function bestPageForTopic(pages: readonly EvalPage[], topic: PairwiseTopic): EvalPage {
+	const keywordRes = topic.keywords.map(
+		(kw) => new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+	);
 	let best = pages[0];
 	let bestScore = -1;
 	for (const page of pages) {
 		const content = page.content ?? "";
 		const words = content.split(/\s+/).length || 1;
 		let hits = 0;
-		for (const kw of topic.keywords) {
-			const re = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+		for (const re of keywordRes) {
 			hits += (page.title.match(re)?.length ?? 0) * 5;
 			hits += content.match(re)?.length ?? 0;
 		}

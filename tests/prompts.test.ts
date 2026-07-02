@@ -82,7 +82,18 @@ describe("buildPagePrompt", () => {
 		seedFilePaths: ["src/index.ts", "src/utils.ts"],
 		suggestedDiagrams: ["architecture", "flow"],
 		outline: "- Overview\n  - Architecture Overview",
+		outputMode: "schema" as const,
 	};
+
+	test("schema mode omits the final-message protocol", () => {
+		const prompt = buildPagePrompt(baseParams);
+		expect(prompt).not.toContain("FINAL message");
+	});
+
+	test("final-message mode instructs bare-markdown output", () => {
+		const prompt = buildPagePrompt({ ...baseParams, outputMode: "final-message" });
+		expect(prompt).toContain("FINAL message must be ONLY the wiki page markdown");
+	});
 
 	test("includes section and page title", () => {
 		const prompt = buildPagePrompt(baseParams);

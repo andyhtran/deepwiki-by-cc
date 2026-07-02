@@ -237,15 +237,8 @@ const AGENTIC_TIMEOUT_MS = 20 * 60 * 1000;
 
 // codex exec's --output-schema suppresses tool use entirely — the model
 // answers immediately in the constrained format, hallucinating instead of
-// exploring. Agentic Codex therefore runs schema-less and is told to emit
-// bare markdown as its final message (the driver picks the last agent
-// message as result.text).
-const CODEX_PAGE_OUTPUT_NOTE = `
-
-## Output
-
-When you have finished exploring, your FINAL message must be ONLY the wiki page markdown itself — no preamble, no summary of what you did, and no code fence wrapping the whole page.`;
-
+// exploring. Agentic Codex therefore runs schema-less ("final-message"
+// output mode); the driver picks the last agent message as result.text.
 function isCodexModel(modelId: string): boolean {
 	return getGenerationModel(modelId)?.provider === "codex-cli";
 }
@@ -276,9 +269,10 @@ export async function generatePage(params: {
 		seedFilePaths: params.page.filePaths || [],
 		suggestedDiagrams: params.page.diagrams || [],
 		outline: outlineSummary,
+		outputMode: isCodex ? "final-message" : "schema",
 	});
 	const result = await invokeGenerationModel({
-		prompt: isCodex ? prompt + CODEX_PAGE_OUTPUT_NOTE : prompt,
+		prompt,
 		modelId,
 		jsonSchema: isCodex ? undefined : PAGE_SCHEMA,
 		cwd: params.clonePath,

@@ -29,10 +29,11 @@ interface CodexCliOptions {
 	cwd?: string;
 }
 
+// No costUsd here: the Codex CLI reports token usage but not cost, so callers
+// estimate from tokens (with the cached-input discount) instead.
 interface CodexCliResult {
 	text: string;
 	structuredOutput?: unknown;
-	costUsd?: number;
 	durationMs?: number;
 	inputTokens?: number;
 	outputTokens?: number;

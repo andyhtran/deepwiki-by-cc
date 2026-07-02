@@ -35,6 +35,13 @@ Headings must describe features, components, or behavior of this repository. Do 
 Do NOT include the page title as an H1 - it will be added automatically.
 Write clear, technical documentation that helps developers understand the codebase.`;
 
+// Rendered when the caller cannot enforce a JSON schema: codex exec's
+// --output-schema suppresses tool use entirely, so schema-less runs must be
+// told to emit bare markdown as the final message.
+const FINAL_MESSAGE_OUTPUT_SECTION = `## Output
+
+When you have finished exploring, your FINAL message must be ONLY the wiki page markdown itself — no preamble, no summary of what you did, and no code fence wrapping the whole page.`;
+
 export function buildPagePrompt(params: {
 	repoName: string;
 	pageTitle: string;
@@ -43,6 +50,12 @@ export function buildPagePrompt(params: {
 	seedFilePaths: readonly string[];
 	suggestedDiagrams: string[];
 	outline: string;
+	/**
+	 * "schema": output format is enforced by a JSON schema (Claude).
+	 * "final-message": no schema is possible (Codex) — the prompt itself
+	 * instructs the final-message protocol.
+	 */
+	outputMode: "schema" | "final-message";
 }): string {
 	const seedList =
 		params.seedFilePaths.length > 0
@@ -84,5 +97,5 @@ Write a comprehensive wiki page about "${params.pageTitle}" based on the code yo
 
 ${buildDiagramSection(params.suggestedDiagrams)}
 
-${FORMAT_SECTION}`;
+${FORMAT_SECTION}${params.outputMode === "final-message" ? `\n\n${FINAL_MESSAGE_OUTPUT_SECTION}` : ""}`;
 }
