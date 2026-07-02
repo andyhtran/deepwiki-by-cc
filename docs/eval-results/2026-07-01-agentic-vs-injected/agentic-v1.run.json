@@ -1,0 +1,25 @@
+{
+	"label": "agentic-v1",
+	"repo": "self",
+	"sha": "b69e8cb20bfd462a6c60a0d892f543817eddffa7",
+	"harnessSha": "f30ef60c050b8c2730cbd4a55979ec77a5a18e76",
+	"harnessDirty": true,
+	"model": "claude-sonnet-4-6",
+	"contextMode": "agentic",
+	"embeddingEnabled": false,
+	"embeddingModel": null,
+	"wikiId": 2,
+	"repoId": 1,
+	"startedAt": "2026-07-02T00:14:51.689Z",
+	"durationMs": 894340,
+	"totals": {
+		"promptTokens": 2285689,
+		"completionTokens": 84302,
+		"costUsd": 3.3456057500000003
+	},
+	"pageStats": {
+		"total": 12,
+		"completed": 12,
+		"failed": 0
+	}
+}

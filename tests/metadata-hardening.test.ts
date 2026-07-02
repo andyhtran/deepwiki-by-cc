@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -42,102 +41,12 @@ function createRepo(owner = "test-owner", name = "test-repo"): { id: number; ful
 	};
 }
 
-// Mirror of createEndpointFingerprint from embeddings/client.ts
-function fingerprint(baseUrl: string): string {
-	let canonical = baseUrl.trim().replace(/\/+$/, "");
-	if (canonical.endsWith("/v1/embeddings"))
-		canonical = canonical.slice(0, -"/v1/embeddings".length);
-	else if (canonical.endsWith("/v1")) canonical = canonical.slice(0, -"/v1".length);
-	return createHash("sha256").update(canonical).digest("hex");
-}
-
 beforeAll(() => {
 	db = setupDb();
 });
 
 afterAll(() => {
 	db.close();
-});
-
-describe("wiki embedding metadata columns", () => {
-	test("wikis table has embedding_enabled, embedding_model, embedding_endpoint_fingerprint", () => {
-		const cols = db.prepare("PRAGMA table_info(wikis)").all() as { name: string }[];
-		const colNames = cols.map((c) => c.name);
-		expect(colNames).toContain("embedding_enabled");
-		expect(colNames).toContain("embedding_model");
-		expect(colNames).toContain("embedding_endpoint_fingerprint");
-	});
-
-	test("embedding_enabled defaults to 0", () => {
-		const repo = createRepo("emb", "defaults");
-		const wiki = db
-			.prepare(
-				`INSERT INTO wikis (repo_id, title, description, structure, model)
-				 VALUES (?, 'Test', null, '{}', 'claude-sonnet')
-				 RETURNING *`,
-			)
-			.get(repo.id) as Record<string, unknown>;
-		expect(wiki.embedding_enabled).toBe(0);
-		expect(wiki.embedding_model).toBeNull();
-		expect(wiki.embedding_endpoint_fingerprint).toBeNull();
-	});
-
-	test("persists embedding metadata on wiki creation", () => {
-		const repo = createRepo("emb", "persist");
-		const fp = fingerprint("https://api.openai.com/v1");
-		const wiki = db
-			.prepare(
-				`INSERT INTO wikis (repo_id, title, description, structure, model, embedding_enabled, embedding_model, embedding_endpoint_fingerprint)
-				 VALUES (?, 'Test', null, '{}', 'claude-sonnet', 1, 'text-embedding-3-small', ?)
-				 RETURNING *`,
-			)
-			.get(repo.id, fp) as Record<string, unknown>;
-		expect(wiki.embedding_enabled).toBe(1);
-		expect(wiki.embedding_model).toBe("text-embedding-3-small");
-		expect(wiki.embedding_endpoint_fingerprint).toBe(fp);
-	});
-});
-
-describe("run-level embedding snapshot in job params", () => {
-	test("embedding snapshot can be stored and retrieved from job params JSON", () => {
-		const repo = createRepo("snap", "test");
-		const snapshot = {
-			enabled: true,
-			model: "text-embedding-3-small",
-			endpointFingerprint: fingerprint("https://api.openai.com"),
-		};
-		const params = JSON.stringify({
-			generationModel: "claude-sonnet-4-6",
-			embeddingSnapshot: snapshot,
-		});
-
-		const job = db
-			.prepare("INSERT INTO jobs (type, repo_id, params) VALUES (?, ?, ?) RETURNING *")
-			.get("full-generation", repo.id, params) as Record<string, unknown>;
-
-		const parsed = JSON.parse(job.params as string);
-		expect(parsed.embeddingSnapshot.enabled).toBe(true);
-		expect(parsed.embeddingSnapshot.model).toBe("text-embedding-3-small");
-		expect(parsed.embeddingSnapshot.endpointFingerprint).toBe(snapshot.endpointFingerprint);
-	});
-
-	test("disabled embedding snapshot has null model and fingerprint", () => {
-		const repo = createRepo("snap", "disabled");
-		const snapshot = { enabled: false, model: null, endpointFingerprint: null };
-		const params = JSON.stringify({
-			generationModel: "claude-sonnet-4-6",
-			embeddingSnapshot: snapshot,
-		});
-
-		const job = db
-			.prepare("INSERT INTO jobs (type, repo_id, params) VALUES (?, ?, ?) RETURNING *")
-			.get("full-generation", repo.id, params) as Record<string, unknown>;
-
-		const parsed = JSON.parse(job.params as string);
-		expect(parsed.embeddingSnapshot.enabled).toBe(false);
-		expect(parsed.embeddingSnapshot.model).toBeNull();
-		expect(parsed.embeddingSnapshot.endpointFingerprint).toBeNull();
-	});
 });
 
 describe("per-version stats selection by wiki_id", () => {
@@ -298,77 +207,5 @@ describe("sync page metadata updates", () => {
 		expect(updated.status).toBe("failed");
 		expect(updated.error_message).toBe("API timeout");
 		expect(updated.generation_time_ms).toBe(5000);
-	});
-});
-
-describe("semantic search endpoint fingerprint filtering", () => {
-	test("only matches embeddings with correct model AND fingerprint", () => {
-		const repo = createRepo("embeddings", "filter");
-		const fp1 = fingerprint("https://api.openai.com");
-		const fp2 = fingerprint("https://custom-embed.example.com");
-
-		// Insert chunks
-		const chunk1 = db
-			.prepare(
-				`INSERT INTO document_chunks (repo_id, file_path, content_hash, chunk_seq, chunk_text, offset_start, offset_end)
-				 VALUES (?, 'src/a.ts', 'hash1', 0, 'chunk text A', 0, 100)
-				 RETURNING id`,
-			)
-			.get(repo.id) as { id: number };
-		const chunk2 = db
-			.prepare(
-				`INSERT INTO document_chunks (repo_id, file_path, content_hash, chunk_seq, chunk_text, offset_start, offset_end)
-				 VALUES (?, 'src/b.ts', 'hash2', 0, 'chunk text B', 0, 100)
-				 RETURNING id`,
-			)
-			.get(repo.id) as { id: number };
-
-		// Insert embeddings: chunk1 with fp1, chunk2 with fp2, same model
-		db.prepare(
-			`INSERT INTO chunk_embeddings (chunk_id, repo_id, file_path, content_hash, embedding, embedding_dim, embedding_model, endpoint_fingerprint)
-			 VALUES (?, ?, 'src/a.ts', 'hash1', '[0.1,0.2]', 2, 'text-embedding-3-small', ?)`,
-		).run(chunk1.id, repo.id, fp1);
-		db.prepare(
-			`INSERT INTO chunk_embeddings (chunk_id, repo_id, file_path, content_hash, embedding, embedding_dim, embedding_model, endpoint_fingerprint)
-			 VALUES (?, ?, 'src/b.ts', 'hash2', '[0.3,0.4]', 2, 'text-embedding-3-small', ?)`,
-		).run(chunk2.id, repo.id, fp2);
-
-		// Query filtering by fp1 should only return chunk1
-		const rows = db
-			.prepare(
-				`SELECT c.chunk_text FROM document_chunks c
-				 INNER JOIN chunk_embeddings e ON e.chunk_id = c.id
-				 WHERE c.repo_id = ? AND e.embedding_model = ? AND e.endpoint_fingerprint = ?`,
-			)
-			.all(repo.id, "text-embedding-3-small", fp1) as { chunk_text: string }[];
-
-		expect(rows.length).toBe(1);
-		expect(rows[0].chunk_text).toBe("chunk text A");
-
-		// Query filtering by fp2 should only return chunk2
-		const rows2 = db
-			.prepare(
-				`SELECT c.chunk_text FROM document_chunks c
-				 INNER JOIN chunk_embeddings e ON e.chunk_id = c.id
-				 WHERE c.repo_id = ? AND e.embedding_model = ? AND e.endpoint_fingerprint = ?`,
-			)
-			.all(repo.id, "text-embedding-3-small", fp2) as { chunk_text: string }[];
-
-		expect(rows2.length).toBe(1);
-		expect(rows2[0].chunk_text).toBe("chunk text B");
-	});
-});
-
-describe("migration safety for existing DBs", () => {
-	test("adding columns to a table that already has them is idempotent", () => {
-		// The schema already creates the columns, so calling ALTER TABLE would fail.
-		// Our migration logic checks column existence before altering.
-		const cols = db.prepare("PRAGMA table_info(wikis)").all() as { name: string }[];
-		const colNames = new Set(cols.map((c) => c.name));
-
-		// Verify the migration targets exist (schema created them)
-		expect(colNames.has("embedding_enabled")).toBe(true);
-		expect(colNames.has("embedding_model")).toBe(true);
-		expect(colNames.has("embedding_endpoint_fingerprint")).toBe(true);
 	});
 });

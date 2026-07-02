@@ -1,10 +1,9 @@
 import type { WikiOutline, WikiOutlinePage } from "$lib/types.js";
-import { config } from "../config.js";
+import { config, getGenerationModel } from "../config.js";
 import { log } from "../logger.js";
-import { retrieveContextForPrompt } from "../pipeline/retriever.js";
 import { buildOutlinePrompt } from "../prompts/outline.js";
 import { buildPagePrompt } from "../prompts/page.js";
-import { buildUpdatePrompt } from "../prompts/update.js";
+import { buildUpdatePrompt, NO_CHANGES_SENTINEL } from "../prompts/update.js";
 import { enforceDiagramPolicy } from "./diagram-policy.js";
 import { enforceLinkPolicy } from "./link-policy.js";
 import { invokeGenerationModel } from "./provider.js";
@@ -154,6 +153,18 @@ export interface GenerationUsage {
 	promptTokens: number;
 	completionTokens: number;
 	modelId: string;
+	/**
+	 * CLI-reported cost when available. More accurate than recomputing from
+	 * token counts because it prices cache creation/reads correctly — matters
+	 * most for agentic runs, which are cache-heavy.
+	 */
+	costUsd?: number;
+	/**
+	 * Cache-served subset of promptTokens (Codex only — Claude reports costUsd
+	 * directly). Lets cost estimation apply the cached-input discount instead
+	 * of pricing all input at the full rate.
+	 */
+	cachedTokens?: number;
 }
 
 export async function generateOutline(params: {
@@ -180,6 +191,8 @@ export async function generateOutline(params: {
 		promptTokens: result.inputTokens ?? 0,
 		completionTokens: result.outputTokens ?? 0,
 		modelId,
+		costUsd: result.costUsd,
+		cachedTokens: result.cachedInputTokens,
 	};
 
 	const jsonStr = extractJson(result.text);
@@ -215,8 +228,22 @@ export function validateOutline(outline: WikiOutline): void {
 	}
 }
 
+// Read-only exploration tools for agentic generation. No Bash/Write so the
+// agent cannot mutate the checkout or run arbitrary commands.
+const AGENTIC_TOOLS = ["Read", "Grep", "Glob"] as const;
+// Per-call guardrails: exploration multiplies turns, so cap both spend and time.
+const AGENTIC_MAX_BUDGET_USD = 2;
+const AGENTIC_TIMEOUT_MS = 20 * 60 * 1000;
+
+// codex exec's --output-schema suppresses tool use entirely — the model
+// answers immediately in the constrained format, hallucinating instead of
+// exploring. Agentic Codex therefore runs schema-less ("final-message"
+// output mode); the driver picks the last agent message as result.text.
+function isCodexModel(modelId: string): boolean {
+	return getGenerationModel(modelId)?.provider === "codex-cli";
+}
+
 export async function generatePage(params: {
-	repoId: number;
 	repoName: string;
 	repoUrl?: string | null;
 	defaultBranch?: string | null;
@@ -225,56 +252,41 @@ export async function generatePage(params: {
 	sectionTitle: string;
 	outline: WikiOutline;
 	generationModel?: string;
+	/** Repo checkout the agent explores. */
+	clonePath: string;
 }): Promise<{ content: string; diagrams: string[]; usage: GenerationUsage }> {
 	const modelId = params.generationModel || config.generationModel;
 
 	log.generator.info({ page: params.page.title, model: modelId }, "generating page");
 
-	const retrievalQuery = [
-		params.sectionTitle,
-		params.page.title,
-		params.page.description,
-		...(params.page.filePaths || []),
-	]
-		.filter((x) => x && x.length > 0)
-		.join("\n");
-
-	const { codeContext, source } = await retrieveContextForPrompt({
-		repoId: params.repoId,
-		filePaths: params.page.filePaths || [],
-		queryText: retrievalQuery,
-	});
-	log.generator.debug(
-		{
-			page: params.page.title,
-			source,
-			fileCount: params.page.filePaths?.length ?? 0,
-		},
-		"resolved page context",
-	);
-
 	const outlineSummary = buildOutlineSummary(params.outline);
-
+	const isCodex = isCodexModel(modelId);
 	const prompt = buildPagePrompt({
 		repoName: params.repoName,
 		pageTitle: params.page.title,
 		pageDescription: params.page.description,
 		sectionTitle: params.sectionTitle,
-		codeContext,
+		seedFilePaths: params.page.filePaths || [],
 		suggestedDiagrams: params.page.diagrams || [],
 		outline: outlineSummary,
+		outputMode: isCodex ? "final-message" : "schema",
 	});
-
 	const result = await invokeGenerationModel({
 		prompt,
 		modelId,
-		jsonSchema: PAGE_SCHEMA,
+		jsonSchema: isCodex ? undefined : PAGE_SCHEMA,
+		cwd: params.clonePath,
+		tools: AGENTIC_TOOLS,
+		maxBudgetUsd: AGENTIC_MAX_BUDGET_USD,
+		timeoutMs: AGENTIC_TIMEOUT_MS,
 	});
 
 	const usage: GenerationUsage = {
 		promptTokens: result.inputTokens ?? 0,
 		completionTokens: result.outputTokens ?? 0,
 		modelId,
+		costUsd: result.costUsd,
+		cachedTokens: result.cachedInputTokens,
 	};
 
 	const so = result.structuredOutput as { content?: string } | undefined;
@@ -290,7 +302,6 @@ export async function generatePage(params: {
 }
 
 export async function generatePageUpdate(params: {
-	repoId: number;
 	repoName: string;
 	repoUrl?: string | null;
 	defaultBranch?: string | null;
@@ -303,34 +314,13 @@ export async function generatePageUpdate(params: {
 	filePaths: string[];
 	outline: string;
 	generationModel?: string;
+	/** Updated repo checkout the agent explores. */
+	clonePath: string;
 }): Promise<{ content: string | null; diagrams: string[]; usage: GenerationUsage }> {
 	const modelId = params.generationModel || config.generationModel;
 	log.generator.info({ page: params.pageTitle, model: modelId }, "updating page");
 
-	const retrievalQuery = [
-		params.pageTitle,
-		params.changeTitle,
-		params.changeDescription,
-		params.changeDiff.slice(0, 2000),
-		...params.filePaths,
-	]
-		.filter((x) => x && x.length > 0)
-		.join("\n");
-
-	const { codeContext: updatedCodeContext, source } = await retrieveContextForPrompt({
-		repoId: params.repoId,
-		filePaths: params.filePaths,
-		queryText: retrievalQuery,
-	});
-	log.generator.debug(
-		{
-			page: params.pageTitle,
-			source,
-			fileCount: params.filePaths.length,
-		},
-		"resolved page update context",
-	);
-
+	const isCodex = isCodexModel(modelId);
 	const prompt = buildUpdatePrompt({
 		repoName: params.repoName,
 		changeTitle: params.changeTitle,
@@ -338,24 +328,34 @@ export async function generatePageUpdate(params: {
 		changeDiff: params.changeDiff,
 		currentPageContent: params.currentPageContent,
 		pageTitle: params.pageTitle,
-		updatedCodeContext,
+		seedFilePaths: params.filePaths,
 		outline: params.outline,
+		outputMode: isCodex ? "final-message" : "schema",
 	});
 
 	const result = await invokeGenerationModel({
 		prompt,
 		modelId,
-		jsonSchema: UPDATE_SCHEMA,
+		jsonSchema: isCodex ? undefined : UPDATE_SCHEMA,
+		cwd: params.clonePath,
+		tools: AGENTIC_TOOLS,
+		maxBudgetUsd: AGENTIC_MAX_BUDGET_USD,
+		timeoutMs: AGENTIC_TIMEOUT_MS,
 	});
 
 	const usage: GenerationUsage = {
 		promptTokens: result.inputTokens ?? 0,
 		completionTokens: result.outputTokens ?? 0,
 		modelId,
+		costUsd: result.costUsd,
+		cachedTokens: result.cachedInputTokens,
 	};
 
 	const so = result.structuredOutput as { noChangesNeeded?: boolean; content?: string } | undefined;
 	if (so?.noChangesNeeded) {
+		return { content: null, diagrams: [], usage };
+	}
+	if (isCodex && result.text.trim() === NO_CHANGES_SENTINEL) {
 		return { content: null, diagrams: [], usage };
 	}
 	const rawContent = stripLeadingTitleHeading(so?.content ?? result.text, params.pageTitle);
@@ -369,41 +369,6 @@ export async function generatePageUpdate(params: {
 	return { content, diagrams, usage };
 }
 
-export function extractMermaidDiagrams(content: string): string[] {
-	const diagrams: string[] = [];
-	const regex = /```mermaid\n([\s\S]*?)```/g;
-	let match: RegExpExecArray | null;
-
-	while ((match = regex.exec(content)) !== null) {
-		const diagram = match[1].trim();
-		if (isValidMermaidSyntax(diagram)) {
-			diagrams.push(diagram);
-		}
-	}
-
-	return diagrams;
-}
-
-function isValidMermaidSyntax(diagram: string): boolean {
-	const firstLine = diagram.split("\n")[0].trim().toLowerCase();
-	const validTypes = [
-		"graph",
-		"flowchart",
-		"sequencediagram",
-		"classdiagram",
-		"statediagram",
-		"erdiagram",
-		"gantt",
-		"pie",
-		"gitgraph",
-		"mindmap",
-		"timeline",
-		"quadrantchart",
-		"sankey",
-		"block",
-		"packet",
-		"architecture",
-	];
-
-	return validTypes.some((type) => firstLine.startsWith(type) || firstLine.startsWith(`${type}-`));
-}
+// Re-exported for existing import sites; implementations live in
+// diagram-policy.ts alongside the fence-aware block scanner they share.
+export { extractMermaidDiagrams, isValidMermaidSyntax } from "./diagram-policy.js";

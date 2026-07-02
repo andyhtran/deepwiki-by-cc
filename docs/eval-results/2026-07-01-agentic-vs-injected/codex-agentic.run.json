@@ -1,0 +1,25 @@
+{
+	"label": "codex-agentic",
+	"repo": "self",
+	"sha": "b69e8cb20bfd462a6c60a0d892f543817eddffa7",
+	"harnessSha": "b69e8cb20bfd462a6c60a0d892f543817eddffa7",
+	"harnessDirty": true,
+	"model": "gpt-5.5",
+	"contextMode": "agentic",
+	"embeddingEnabled": false,
+	"embeddingModel": null,
+	"wikiId": 5,
+	"repoId": 1,
+	"startedAt": "2026-07-02T01:16:37.865Z",
+	"durationMs": 846371,
+	"totals": {
+		"promptTokens": 8255583,
+		"completionTokens": 166144,
+		"costUsd": 16.77328625
+	},
+	"pageStats": {
+		"total": 19,
+		"completed": 19,
+		"failed": 0
+	}
+}

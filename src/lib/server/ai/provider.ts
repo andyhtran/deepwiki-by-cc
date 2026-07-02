@@ -8,6 +8,12 @@ export interface InvokeGenerationModelOptions {
 	systemPrompt?: string;
 	timeoutMs?: number;
 	jsonSchema?: Record<string, unknown>;
+	/** Working directory for the CLI process (agentic exploration root). */
+	cwd?: string;
+	/** Claude only: restrict + auto-approve exactly these tools. */
+	tools?: readonly string[];
+	/** Claude only: per-invocation spend cap. */
+	maxBudgetUsd?: number;
 }
 
 export interface InvokeGenerationModelResult {
@@ -17,6 +23,8 @@ export interface InvokeGenerationModelResult {
 	durationMs?: number;
 	inputTokens?: number;
 	outputTokens?: number;
+	/** Codex only: subset of inputTokens served from prompt cache (~10% price). */
+	cachedInputTokens?: number;
 }
 
 export async function invokeGenerationModel(
@@ -34,6 +42,9 @@ export async function invokeGenerationModel(
 			model: model.cliModel,
 			timeoutMs: options.timeoutMs,
 			jsonSchema: options.jsonSchema,
+			cwd: options.cwd,
+			tools: options.tools,
+			maxBudgetUsd: options.maxBudgetUsd,
 		});
 	}
 
@@ -44,5 +55,6 @@ export async function invokeGenerationModel(
 		reasoningEffort: model.reasoningEffort ?? "medium",
 		timeoutMs: options.timeoutMs,
 		jsonSchema: options.jsonSchema,
+		cwd: options.cwd,
 	});
 }

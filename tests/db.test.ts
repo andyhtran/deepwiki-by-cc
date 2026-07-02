@@ -46,14 +46,14 @@ function createRepo(
 	return row;
 }
 
-function createDocument(repoId: number, filePath = "src/index.ts", content = "console.log('hi')") {
+function createDocument(repoId: number, filePath = "src/index.ts", contentHash = "hash123") {
 	return db
 		.prepare(
-			`INSERT INTO documents (repo_id, file_path, language, content, content_hash)
-			 VALUES (?, ?, 'typescript', ?, 'hash123')
+			`INSERT INTO documents (repo_id, file_path, content_hash)
+			 VALUES (?, ?, ?)
 			 RETURNING *`,
 		)
-		.get(repoId, filePath, content) as Record<string, unknown>;
+		.get(repoId, filePath, contentHash) as Record<string, unknown>;
 }
 
 beforeAll(() => {
@@ -72,8 +72,6 @@ describe("schema", () => {
 		const names = tables.map((t) => t.name);
 		expect(names).toContain("repos");
 		expect(names).toContain("documents");
-		expect(names).toContain("document_chunks");
-		expect(names).toContain("chunk_embeddings");
 		expect(names).toContain("wikis");
 		expect(names).toContain("wiki_pages");
 		expect(names).toContain("jobs");
@@ -85,8 +83,6 @@ describe("schema", () => {
 			.all() as { name: string }[];
 		const names = indexes.map((i) => i.name);
 		expect(names).toContain("idx_documents_repo");
-		expect(names).toContain("idx_document_chunks_repo_path");
-		expect(names).toContain("idx_chunk_embeddings_repo_model_endpoint");
 		expect(names).toContain("idx_jobs_status");
 	});
 });
@@ -151,8 +147,8 @@ describe("repos", () => {
 describe("documents", () => {
 	test("insert and get by repo", () => {
 		const repo = createRepo("doc", "test");
-		createDocument(repo.id, "src/a.ts", "const a = 1;");
-		createDocument(repo.id, "src/b.ts", "const b = 2;");
+		createDocument(repo.id, "src/a.ts", "hash-a");
+		createDocument(repo.id, "src/b.ts", "hash-b");
 
 		const docs = db
 			.prepare("SELECT * FROM documents WHERE repo_id = ? ORDER BY file_path")
@@ -168,21 +164,21 @@ describe("documents", () => {
 			.prepare("SELECT * FROM documents WHERE repo_id = ? AND file_path = ?")
 			.get(repo.id, "lib/util.ts") as Record<string, unknown>;
 		expect(doc).toBeDefined();
-		expect(doc.language).toBe("typescript");
+		expect(doc.content_hash).toBe("hash123");
 	});
 
-	test("upsert on conflict updates content", () => {
+	test("upsert on conflict updates content hash", () => {
 		const repo = createRepo("doc", "upsert");
-		createDocument(repo.id, "src/x.ts", "old content");
+		createDocument(repo.id, "src/x.ts", "old-hash");
 		db.prepare(
-			`INSERT INTO documents (repo_id, file_path, language, content, content_hash)
-			 VALUES (?, 'src/x.ts', 'typescript', 'new content', 'hash456')
-			 ON CONFLICT(repo_id, file_path) DO UPDATE SET content = excluded.content, content_hash = excluded.content_hash`,
+			`INSERT INTO documents (repo_id, file_path, content_hash)
+			 VALUES (?, 'src/x.ts', 'hash456')
+			 ON CONFLICT(repo_id, file_path) DO UPDATE SET content_hash = excluded.content_hash`,
 		).run(repo.id);
 		const doc = db
-			.prepare("SELECT content FROM documents WHERE repo_id = ? AND file_path = 'src/x.ts'")
-			.get(repo.id) as { content: string };
-		expect(doc.content).toBe("new content");
+			.prepare("SELECT content_hash FROM documents WHERE repo_id = ? AND file_path = 'src/x.ts'")
+			.get(repo.id) as { content_hash: string };
+		expect(doc.content_hash).toBe("hash456");
 	});
 
 	test("delete by paths", () => {

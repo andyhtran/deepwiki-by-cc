@@ -1,0 +1,248 @@
+{
+	"label": "agentic-v1",
+	"scoredAt": "2026-07-02T01:48:15.799Z",
+	"deterministic": {
+		"citation": {
+			"candidateCount": 67,
+			"validCount": 62,
+			"invalidPaths": [
+				"foo/bar/src/util.ts",
+				"highlight.js",
+				"settings.json",
+				"src/index.ts",
+				"src/main.ts"
+			],
+			"validity": 0.9253731343283582
+		},
+		"coverage": {
+			"covered": [
+				"src/lib/server/queue/handlers.ts",
+				"src/lib/server/queue/worker.ts",
+				"src/lib/server/ai/generator.ts",
+				"src/lib/server/ai/provider.ts",
+				"src/lib/server/ai/claude-cli.ts",
+				"src/lib/server/ai/codex-cli.ts",
+				"src/lib/server/ai/outline-normalizer.ts",
+				"src/lib/server/pipeline/scanner.ts",
+				"src/lib/server/pipeline/retriever.ts",
+				"src/lib/server/pipeline/git.ts",
+				"src/lib/server/prompts/outline.ts",
+				"src/lib/server/embeddings/retrieval.ts",
+				"src/lib/server/db/schema.sql"
+			],
+			"missing": [],
+			"coverage": 1
+		},
+		"mermaid": {
+			"total": 3,
+			"valid": 3
+		},
+		"size": {
+			"sections": 7,
+			"pages": 12,
+			"completedPages": 12,
+			"failedPages": 0,
+			"totalWords": 21271,
+			"avgWordsPerPage": 1773
+		}
+	},
+	"qa": {
+		"items": [
+			{
+				"id": "cancel-mid-generation",
+				"question": "What happens when a wiki generation job is cancelled while pages are still being generated?",
+				"expected": "The job is marked cancelled in the database, an abort signal tells the handler to stop before starting further pages, and any in-flight Claude/Codex CLI subprocesses are killed. The worker checks the DB status afterward so a cancellation is never overwritten with completed or failed.",
+				"actual": "When a job is cancelled mid-generation, `requestJobCancellation(jobId)` first calls `cancelJob(jobId)` to immediately write `status = 'cancelled'` to the database, then calls `controller.abort()` on the job's AbortController and kills all active Claude and Codex CLI subprocesses via `killActiveClaudeProcesses()` and `killActiveCodexProcesses()`. Inside the handler, each page generation checks `throwIfCancelled(signal)` at the start of its work unit, which throws a `JobCancelledError` if `signal.aborted` is true. After the handler returns or throws, the worker re-reads the job from the DB; if `current?.status === 'cancelled'` it does nothing — it does not overwrite the cancelled status with a completed record. Pages that were in `generating` state when the process was interrupted remain in `generating` state and can be picked up by a subsequent Resume operation.",
+				"verdict": "correct",
+				"reason": "The actual answer covers all key points: job marked cancelled in DB, abort signal stops further pages, CLI subprocesses killed, and worker re-reads DB status and skips overwriting cancelled with completed."
+			},
+			{
+				"id": "embedding-fallback",
+				"question": "If embedding retrieval fails or returns no useful chunks during page generation, what context does the page prompt get instead?",
+				"expected": "It falls back to full-file context: the complete contents of the page's assigned file paths are loaded from the stored documents and injected into the prompt, truncated at 100,000 characters with a note listing any omitted files.",
+				"actual": "If embeddings are disabled (`embeddingConfig.enabled === false`) or if any part of the embedding retrieval throws an exception, `retrieveContextForPrompt` falls back to reading raw file content from the `documents` table via `retrieveFileContents`, passing the page's assigned file paths. These are formatted by `formatFilesForContext` as language-tagged fenced code blocks with file headers, and the returned `source` label is `'files'`. The full-file fallback is hard-capped at 100,000 characters; files that would push the concatenated total past that limit are omitted and listed at the end of the context block. Additionally, in constrained embedding mode, if zero chunks are returned, `retrieveWithMode` returns `null` and the caller falls back to the same full-file context path.",
+				"verdict": "correct",
+				"reason": "The actual answer covers all key points: falls back to full file contents from the documents table for the page's assigned file paths, hard-capped at 100,000 characters, with omitted files listed at the end."
+			},
+			{
+				"id": "hybrid-weakness",
+				"question": "In hybrid_auto retrieval mode, what makes constrained retrieval count as weak so the system falls back to a global search?",
+				"expected": "Any of: fewer than 3 chunks returned, total context under 4,000 characters, top similarity score below 0.3, or a top-score gap under 0.05 (flat score distribution). On fallback, global results are merged and deduplicated with the constrained ones within the context budget.",
+				"actual": "In `hybrid_auto` mode, the constrained retrieval results are evaluated by `isRetrievalWeak`, which checks four thresholds independently. Failing **any one** of them marks the retrieval as weak and triggers the global fallback: (1) fewer than 3 chunks returned (`minChunks`, configurable via `weaknessMinChunks`); (2) total context under 4,000 characters (`minContextChars`, configurable via `weaknessMinContextChars`); (3) best cosine similarity score below 0.3 (`minTopScore`, configurable via `weaknessMinTopScore`); (4) score gap between the first and second results below 0.05 (`minScoreGap`, configurable via `weaknessMinScoreGap`), meaning no single chunk clearly dominates. All four thresholds are individually configurable through the settings API and clamped to valid ranges in `getEffectiveRetrievalConfig`.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly identifies all four weakness thresholds (fewer than 3 chunks, under 4,000 chars, top score below 0.3, score gap under 0.05) and states that any one failing triggers the global fallback."
+			},
+			{
+				"id": "sync-page-selection",
+				"question": "How does the sync operation decide which wiki pages to regenerate after new commits?",
+				"expected": "It diffs the clone from the last recorded commit SHA to HEAD, collects the changed file paths, and regenerates only pages whose stored file path list contains at least one changed file. Each affected page gets an update prompt that includes the diff and recent commit messages, and the model may respond that no changes are needed.",
+				"actual": "`updateAffectedPages` finds every `wiki_pages` row whose `file_paths` JSON array intersects the set of changed files: it parses each page's `file_paths` column and checks whether any element appears in `changedSet` (a `Set` built from the diff output). Pages without content are skipped. For each affected page, `generatePageUpdate` is called concurrently up to `parallelPageLimit`. The changed file set itself comes from `getDiffSinceCommit`, which runs `git diff <fromSha>..HEAD --name-only` to list changed file paths since the stored `repo.last_commit_sha`. If the resolved HEAD SHA equals `repo.last_commit_sha`, the handler short-circuits immediately with no pages regenerated. If commits exist but no files changed, the SHA is updated and the handler returns early.",
+				"verdict": "partial",
+				"reason": "The actual answer correctly describes diffing from the stored commit SHA, collecting changed files, and filtering pages by file_paths intersection. However, it omits two key points from the expected: that the update prompt includes the diff and recent commit messages, and that the model may respond that no changes are needed."
+			},
+			{
+				"id": "parallel-limit",
+				"question": "How many wiki pages are generated concurrently by default, and what are the allowed bounds?",
+				"expected": "2 pages in parallel by default, configurable between 1 and 5 via the parallel page limit setting.",
+				"actual": "By default, 2 wiki pages are generated concurrently (`parallelPageLimit: 2` in the static `config` object). The allowed range in the settings UI is 1–5 (enforced via `Math.max(1, Math.min(5, ...)` in `getEffectiveConfig`). The raw database write via the `/api/settings` PUT handler accepts values up to 10, but the effective value is always clamped back to 1–5 when read by `getEffectiveConfig`. The limit is applied using `pLimit(effective.parallelPageLimit)` wrapping each page's `generatePage` call inside `Promise.all`.",
+				"verdict": "correct",
+				"reason": "The actual answer confirms 2 pages by default and 1–5 as the enforced range, matching the expected. The extra detail about the DB accepting up to 10 but clamping does not contradict the key."
+			},
+			{
+				"id": "model-invocation",
+				"question": "How does the system call the AI models - through HTTP APIs/SDKs or some other mechanism?",
+				"expected": "It spawns CLI subprocesses: the Claude CLI in print mode with streaming JSON output, and the Codex CLI via codex exec with JSON output. Stdout events are parsed for text, structured output, and token usage. Calls have timeouts (10 minutes by default) and retry with exponential backoff on retryable errors, and active processes are tracked so they can be killed on cancellation.",
+				"actual": "The system calls AI models by spawning CLI tools as subprocesses — not through HTTP APIs or SDKs directly. For Claude models, it forks the `claude` binary with `-p <prompt> --output-format stream-json --verbose --no-session-persistence --dangerously-skip-permissions` and optionally `--model`, `--system-prompt`, and `--json-schema` flags. For Codex/GPT models, it forks `codex exec --json --ephemeral --skip-git-repo-check --sandbox read-only --model <model> --config model_reasoning_effort=<effort>` with the prompt written to stdin (`-`). Both subprocesses emit newline-delimited JSON events on stdout which the wrappers parse as a stream. The `invokeGenerationModel` dispatcher in `provider.ts` selects which CLI wrapper to use based on the `provider` field (`claude-cli` or `codex-cli`) in the `GENERATION_MODELS` registry.",
+				"verdict": "partial",
+				"reason": "The actual answer correctly identifies CLI subprocess spawning and streaming JSON parsing. However, it omits the key points listed in the expected: 10-minute timeouts, exponential backoff retries, and active process tracking for cancellation."
+			},
+			{
+				"id": "storage",
+				"question": "Where are scanned repository files and generated wikis stored?",
+				"expected": "In a SQLite database: scanned file contents live in a documents table, generated wikis and per-page content in wikis and wiki_pages tables, along with jobs and optional embedding chunk tables.",
+				"actual": "All persistent state lives under `./data` (resolved from `config.dataDir`). Specifically: the SQLite database is at `./data/deepwiki.db` and holds all wiki metadata, page content, job records, scanned file content (in the `documents` table), embedding vectors (in `document_chunks` and `chunk_embeddings`), and settings. Cloned GitHub repos are placed under `./data/repos/<owner>_<name>`. The ANN index manifest for embeddings is written at `{dataDir}/ann/repo-{repoId}/{model}-{fp16chars}/index.json`. In the Docker deployment, the `data` volume is mounted at `/home/deepwiki/app/data`, mapping to the same relative path. Generated wiki content (markdown, diagrams, outlines) is stored entirely in the SQLite database — there are no separate flat files for wiki pages.",
+				"verdict": "correct",
+				"reason": "The actual answer confirms SQLite storage with documents, wikis, wiki_pages, jobs, and embedding chunk tables. The extra detail about file paths and Docker mounts does not contradict the key."
+			},
+			{
+				"id": "outline-inputs",
+				"question": "What inputs does the outline generation step receive - does it see full source code?",
+				"expected": "No. The outline prompt receives only the repo name, the file tree, the README as supporting context, the file count, and the list of languages. Full source content is only used later during per-page generation.",
+				"actual": "The outline generation step does NOT receive full source code. `buildOutlinePrompt` assembles the model input from three sources: (1) the **file tree** — the full filtered file listing produced by the scanner (file paths and structure, not file contents); (2) the **README** — included verbatim but labeled as `'supporting context — treat as intent, not truth'`; (3) the **languages list** — the set of detected programming languages found in the repo. Scale guidance is also injected based on the total file count (e.g., ≤5 files → single section with 1–2 pages, >50 files → 3–7 sections with 1–4 pages each). The system prompt for this call is `'You are a JSON generator. Output ONLY valid JSON with no prose, no markdown fences, no explanation. Start your response with { and end with }'`.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly states no full source code is used, and covers file tree, README, languages list, and file count (via scale guidance). The minor omission of 'repo name' does not contradict the key's substance."
+			},
+			{
+				"id": "page-postprocessing",
+				"question": "What deterministic post-processing runs on each generated page before it is saved?",
+				"expected": "A duplicated leading H1 matching the page title is stripped; headings that leak prompt-policy wording or are bare code spans are sanitized; a diagram policy validates and limits Mermaid diagrams; and a link policy rewrites absolute-path links whose suffix matches a known repo file into GitHub blob URLs or inline code.",
+				"actual": "Four deterministic post-processing steps run on every generated page in `generator.ts`: (1) **`stripLeadingTitleHeading`** — removes a leading `# Page Title` H1 if the model included one, since the wiki viewer renders the title separately. (2) **`sanitizeLeakyHeadings`** — removes H2/H3 headings whose text matches six known prompt-policy phrases that leak through ('code first', 'source of truth', 'code vs docs', 'docs vs code', 'trust hierarchy', 'source trust hierarchy'), and unwraps headings that are a bare inline-code span (e.g., `## \\`functionName\\`` → `## functionName`); content inside fenced code blocks is left untouched. (3) **`enforceDiagramPolicy`** — enforces a maximum of 2 Mermaid diagrams per page (`MAX_DIAGRAMS_PER_PAGE = 2`), detects near-duplicate diagrams via normalized signature (collapses whitespace, lowercases, unquotes simple labels), splices out excess and duplicate blocks in reverse offset order, and extracts surviving Mermaid blocks into a separate `diagrams` array. (4) **`enforceLinkPolicy`** — rewrites absolute-path markdown links matching known repo files to GitHub blob URLs; when no GitHub URL is configured, replaces the link with inline code; skipped entirely when no file list is available.",
+				"verdict": "correct",
+				"reason": "The actual answer covers all four deterministic post-processing steps: strip leading H1, sanitize leaky headings, enforce diagram policy, and enforce link policy — with accurate details for each."
+			},
+			{
+				"id": "resume-selection",
+				"question": "Which pages does the resume operation regenerate?",
+				"expected": "Only pages whose status is failed, pending, or generating. Completed pages are left untouched.",
+				"actual": "The resume operation targets pages with status `failed`, `pending`, or `generating` — all three statuses are included in the filter. The `generating` status is specifically included because a server restart cancels in-flight jobs (via `cancelStaleJobs`), leaving pages whose subprocess was killed mid-way stuck in the `generating` state rather than being marked as failed. The route returns HTTP 400 with `{ error: 'No failed pages to resume' }` if no pages match these statuses. `handleResumeGeneration` then re-runs `generatePage` (the same function used in initial generation) for only those pages, without re-scanning files, rebuilding embeddings, or creating a new wiki version.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly identifies all three statuses (failed, pending, generating) and explains why generating is included (server restart leaves pages stuck). Completed pages are implicitly excluded."
+			},
+			{
+				"id": "unchanged-repo",
+				"question": "When a full generation runs again and the repo's commit SHA is unchanged, what work is skipped?",
+				"expected": "Data preparation is skipped: file contents are not re-stored because the commit SHA matches the stored last commit SHA, so existing document data is reused. A new wiki version is still created and its pages are generated fresh.",
+				"actual": "When `commitSha != null` and it equals `repo.last_commit_sha`, `skipDataPrep` is set to `true`. In this case: the file scan (`scanRepository`) still runs to build the file tree string for the outline prompt, but the `documents` table is not rewritten (no `insertDocument` calls) and embeddings are not refreshed (`refreshEmbeddingsForScannedFiles` is skipped). All other pipeline phases proceed normally — outline generation, page generation, and wiki record creation still occur. This avoids redundant DB writes while preserving the ability to generate a new wiki version even when the source hasn't changed.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly states that when commit SHA matches, document writes and embedding refresh are skipped while the outline and page generation still proceed. The detail that the file scan still runs (for the file tree) is extra detail, not a contradiction."
+			},
+			{
+				"id": "scanner-filters",
+				"question": "What kinds of files does the repository scanner exclude?",
+				"expected": "It respects .gitignore and skips build/vendor/cache directories (node_modules, dist, .svelte-kit, etc.), binary/media/lock-file extensions, secret files like .env and credentials, files over 1 MB or empty, files containing null bytes, files with generated-code markers, and minified files detected by average line length. Results are capped at 10,000 files.",
+				"actual": "The scanner applies seven layers of file exclusion in order: (1) **Directory blocklist** (`SKIP_DIRS`): ~50 hardcoded directory names including VCS internals (`.git`, `.svn`), package manager trees (`node_modules`, `vendor`), build artifacts (`dist`, `build`, `target`), framework caches (`.next`, `.svelte-kit`), language tooling (`__pycache__`, `.gradle`), runtime environments (`venv`), infra (`.terraform`), IDEs (`.idea`), and temp/logs (`tmp`, `coverage`). (2) **Exact filename blocklist** (`SKIP_FILES`): lock files (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lockb`, `Cargo.lock`, etc.), `.env*` files, credential files (`credentials.json`, `id_rsa`), and OS artifacts (`.DS_Store`, `Thumbs.db`). (3) **Extension blocklist** (`SKIP_EXTENSIONS`): `.lock`, `.min.js`, `.min.css`, `.map`, `.wasm`, all image/audio/video formats, archives, compiled binaries (`.pyc`, `.class`, `.jar`, `.o`, `.so`, `.dylib`), fonts, database files, data science formats (`.parquet`, `.h5`, `.pkl`), and ML weights (`.onnx`, `.pt`, `.safetensors`). (4) **Root `.gitignore` rules** (only the root file; per-directory `.gitignore` files are not loaded). (5) **Size limits**: files larger than 1 MB (`config.maxFileSize`) or empty (0 bytes) are skipped. (6) **Binary content detection**: the first 8 KB is scanned for null bytes (`\\0`); files containing any are skipped. (7) **Generated file detection**: the first 1,000 characters (uppercased) are checked for markers like `CODE GENERATED`, `DO NOT EDIT`, `AUTO-GENERATED`, `GENERATED BY`, `@GENERATED`, etc. (11 total markers). (8) **Minification detection**: if `content.length / lineCount > 500` characters per line, the file is considered minified and skipped. After all filters, the list is capped at `config.maxFilesPerRepo` (10,000 files), with priority source directories (`src`, `lib`, `app`, `pkg`, `cmd`, `internal`) sorted first.",
+				"verdict": "correct",
+				"reason": "The actual answer covers all the filter categories from the expected: gitignore, directory blocklist, extension blocklist, secret files, size/empty limits, null byte detection, generated-code markers, minification detection, and the 10,000-file cap."
+			},
+			{
+				"id": "version-metadata",
+				"question": "What generation metadata does each wiki version record?",
+				"expected": "The generation model used, plus an embedding snapshot: whether embeddings were enabled, the embedding model name, and a fingerprint of the embedding endpoint. Individual pages also record their model, token counts, and generation time.",
+				"actual": "Each wiki version record stores: `version` (per-repo monotonic integer), `title`, `description`, `structure` (full normalized `WikiOutline` JSON), `model` (generation model ID, e.g. `claude-sonnet-4-6`), `source_type` (`'github'` or `'local'`), `generation_duration_ms` (wall-clock time for the full run), `embedding_enabled` (0 or 1 snapshot of the embedding setting at generation time), `embedding_model` (embedding model name snapshot), `embedding_endpoint_fingerprint` (SHA-256 prefix of the embedding base URL, to distinguish different self-hosted endpoints), `status` (`generating`, `completed`, or `failed`), and `created_at`/`updated_at` timestamps. The version list returned to the frontend also includes `page_count` and `embedding_enabled` per version.",
+				"verdict": "partial",
+				"reason": "The actual answer correctly covers the wiki-level metadata (model, embedding_enabled, embedding_model, embedding_endpoint_fingerprint). However, it omits the expected key point that individual pages also record their model, token counts, and generation time."
+			},
+			{
+				"id": "outline-hardening",
+				"question": "After the model returns a wiki outline, what guards protect against bad model output?",
+				"expected": "The outline JSON is validated for required structure (title, sections, pages with ids and titles), and a deterministic normalizer then dedupes file paths, drops hallucinated paths that don't exist in the scanned repo, injects entrypoint files into overview pages that lack code files, and clamps diagram suggestions.",
+				"actual": "Three layers of guards protect against bad outline output: (1) **`extractJson`** — strips any markdown code fences and slices from the first `{` to the last `}` before attempting `JSON.parse`, handling models that wrap the JSON in prose or fences despite the instruction not to. (2) **`validateOutline`** — checks that `title` exists, `sections` is an array, each section has `id`, `title`, and a `pages` array, and every page has `id` and `title`; any missing field throws immediately with the raw model response truncated to 500 characters in the error message. (3) **`normalizeOutline`** (deterministic post-processing, no extra AI call) applies four corrections: deduplicates file paths within each page and drops hallucinated paths not found in the actual repo file set, with a per-page cap of 25 file paths; injects up to 2 entrypoint file candidates (from a priority list including `package.json`, `src/index.ts`, SvelteKit route files, etc.) into the first/overview section if it has fewer than 2 non-documentation files; trims documentation files from overview pages if they make up more than 50% of assigned files (keeping README files last); and clamps diagram suggestions — clearing `diagrams` entirely for pages with ≤2 assigned files, and capping at 2 diagram suggestions for pages with more files.",
+				"verdict": "correct",
+				"reason": "The actual answer covers all three layers: JSON extraction/fence stripping, structural validation, and the normalizeOutline deterministic pass (deduplication, hallucination removal, entrypoint injection, diagram clamping)."
+			},
+			{
+				"id": "worker-loop-details",
+				"question": "How does the background worker loop actually run — how often does it poll, and what prevents two jobs from being processed at once?",
+				"expected": "A setInterval fires every 1 second. A module-level 'processing' boolean acts as a mutex: if the previous tick is still running, the new tick returns immediately. Jobs are claimed atomically with a single UPDATE ... RETURNING statement that flips the oldest pending job to processing.",
+				"actual": "`startWorker()` registers a `setInterval` that fires every **1,000 ms**. A module-level `processing` boolean acts as a mutex: at the start of each tick, if `processing` is already `true` (the previous tick's handler is still running), the new tick returns immediately without doing anything. This guarantees **at most one job runs at a time** at the queue level. When `processing` is `false`, the tick sets it to `true`, calls `claimNextJob()`, dispatches to the appropriate handler, and sets `processing = false` in a `finally` block. `claimNextJob()` atomically transitions the oldest pending job to `processing` in a single `UPDATE ... WHERE id = (SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at LIMIT 1) RETURNING *` statement — SQLite serializes writes, so no additional locking is needed. Within a single claimed job, page generation is parallelized by `pLimit(effective.parallelPageLimit)` at the handler level.",
+				"verdict": "correct",
+				"reason": "The actual answer confirms the 1,000ms setInterval, the module-level processing boolean mutex, and the atomic UPDATE...RETURNING claim — all key points from the expected."
+			},
+			{
+				"id": "cancel-race",
+				"question": "Can a cancellation overwrite a job that already finished (or vice versa)? What specifically prevents races between cancellation and completion?",
+				"expected": "No. The cancel SQL only updates jobs whose status is pending or processing, so terminal jobs can't be flipped. After a handler finishes, the worker re-reads the job's status from the database and skips marking it completed if it was cancelled in the meantime; the failure path likewise checks for cancelled before writing failed.",
+				"actual": "Two specific mechanisms prevent races: (1) `cancelJob` uses `WHERE status IN ('pending', 'processing')` in its UPDATE, so it is a no-op if the job has already reached a terminal state (`completed`, `failed`, or `cancelled`) — a cancellation request cannot overwrite a finished record. (2) After the handler returns (whether successfully or by throwing), the worker re-reads the job status from the database before deciding what to write: `if (current?.status === 'cancelled') { /* do nothing */ } else if (totals ...) { completeJobWithTokens(...) } else { completeJob(...) }`. This means if cancellation arrived and was written to the DB while the handler was finishing, the worker detects the `cancelled` status and skips the `completed` write entirely. The wiki explicitly states this pattern 'avoids overwriting a cancellation with a `completed` record if completion and cancellation arrive simultaneously'.",
+				"verdict": "correct",
+				"reason": "The actual answer covers both mechanisms: the WHERE status IN ('pending','processing') guard on cancelJob, and the post-handler DB re-read that skips the completed write if status is already cancelled."
+			},
+			{
+				"id": "context-truncation",
+				"question": "When full file contents are injected into a page prompt, what exactly happens if the combined context is too large?",
+				"expected": "The formatted context is cut at 100,000 characters, a '(context truncated)' note is appended, and any files that were dropped entirely are listed by path under a 'Files omitted due to context limit' note so the model knows what it isn't seeing.",
+				"actual": "The `formatFilesForContext` formatter (used for the full-file fallback path) hard-caps the concatenated output at **100,000 characters**. Files that would push the total past this limit are omitted entirely and listed at the end of the context block so the model knows they exist but weren't included. For embedding-based retrieval, the budget enforcement works differently: chunks are selected greedily into `maxContextChars` (default 16,000 characters), and the **last chunk that fits may be truncated** with the suffix `'\\n... (chunk truncated)'` rather than dropped, so partial coverage is preferred over a hard cutoff. The same truncation-with-suffix behavior applies in the `mergeAndDedupeChunks` merge path.",
+				"verdict": "partial",
+				"reason": "The actual answer correctly describes the 100,000-character cap and that omitted files are listed at the end. However, it does not mention the specific '(context truncated)' note appended at the truncation point, which the expected identifies as a distinct output element."
+			},
+			{
+				"id": "retry-conditions",
+				"question": "Which Claude CLI failures are retried, how many times, and with what backoff?",
+				"expected": "Errors whose message mentions rate limits, overload, SIGTERM, or a nonzero exit code are considered retryable. Up to 3 retries with exponential backoff of 2^attempt times 2 seconds (2s, 4s, 8s). Other errors are thrown immediately.",
+				"actual": "`invokeClaudeCli` wraps `spawnClaude` in a retry loop with up to **3 retries** (4 total attempts). A retry is triggered when the error message contains any of: `'rate limit'`, `'overloaded'`, `'SIGTERM'`, or `'exit code'`. The backoff is exponential: `2^attempt * 2000 ms`, giving delays of **2 s, 4 s, and 8 s** for the first, second, and third retries respectively. The Codex CLI uses a broader retryable-error check that additionally matches `'timed out'`, `'429'`, and `'503'`. The default per-call timeout for both providers is **10 minutes** (`10 * 60 * 1000` ms), enforced by a `setTimeout` that calls `proc.kill()` and rejects with `'Claude CLI timed out'`.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly identifies all retryable conditions (rate limit, overloaded, SIGTERM, exit code), 3 retries, and the 2^attempt * 2000ms backoff producing 2s, 4s, and 8s delays."
+			},
+			{
+				"id": "clone-refresh",
+				"question": "What happens when generating a wiki for a GitHub repo that was cloned previously?",
+				"expected": "The existing clone is reused: the code attempts git fetch --unshallow (ignoring failure if the clone isn't shallow), then git pull --ff-only. If the pull fails, the clone directory is deleted and the repo is re-cloned fresh. For private repos a GH_TOKEN is embedded in the clone URL, and tokens are sanitized out of error messages.",
+				"actual": "If the clone directory already exists, `cloneRepo` attempts an incremental update in two steps: first it runs `git fetch --unshallow` to convert a shallow clone to full history (errors from this, e.g. if the clone is already full, are silently ignored); then it runs `git pull --ff-only`. If the fast-forward-only pull fails (e.g. due to diverged history), the entire clone directory is deleted and a fresh `git clone` is performed with a 300-second timeout. If the directory does not exist, a fresh `git clone` runs directly. After either path, `git rev-parse HEAD` is run with a 10-second timeout to capture the current commit SHA. When `GH_TOKEN` is set in the environment, the clone URL is constructed as `https://x-access-token:<token>@github.com/<owner>/<name>.git`; the token is scrubbed from any error stack traces before rethrowing.",
+				"verdict": "correct",
+				"reason": "The actual answer covers all key points: reuse existing clone, git fetch --unshallow with silent failure, git pull --ff-only, delete and re-clone on failure, GH_TOKEN embedded in URL, and token sanitization from error messages."
+			},
+			{
+				"id": "overview-injection",
+				"question": "In detail, what does the outline normalizer do to an Overview page that has too few code files, and what are the thresholds?",
+				"expected": "If the Overview page has fewer than 2 non-documentation files, up to 2 entrypoint candidates are injected from a priority list (package.json, src/index.*, src/main.*, main/server/app entry files, etc.) that exist in the scanned repo. Then if documentation files exceed 50% of the page's paths, doc files are trimmed (README-like files kept preferentially). Diagram suggestions are cleared entirely on pages with 2 or fewer files and clamped to at most 2 otherwise.",
+				"actual": "The normalizer identifies the 'overview' section by checking (in order): `id === 'overview'` (case-insensitive), a case-insensitive title match, or position `0`. If the overview section's pages collectively have **fewer than 2 non-documentation files** (`overviewMinNonDocFiles = 2`), the normalizer injects up to **2** entrypoint file candidates from a hardcoded priority list that includes `package.json`, `src/index.ts`, `src/main.ts`, SvelteKit route files, and similar patterns. Separately, if documentation files (`.md`, `.mdx`, `.rst`, `.txt`) make up **more than 50%** of an overview page's assigned files (`overviewMaxDocRatio = 0.5`), the normalizer trims doc files starting from the least important, keeping README files last (they rank highest). Both checks operate on the same overview section detection logic.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly states the threshold of fewer than 2 non-doc files triggers injection of up to 2 entrypoint candidates, and the 50% doc ratio threshold for trimming with README files kept last."
+			},
+			{
+				"id": "minified-detection",
+				"question": "How exactly does the scanner decide a file is minified or generated?",
+				"expected": "Minified: average line length above 500 characters (content length divided by line count). Generated: the first 1,000 characters, uppercased, contain markers like 'DO NOT EDIT', 'CODE GENERATED', 'AUTO-GENERATED', or '@GENERATED'. Either condition excludes the file.",
+				"actual": "**Minification detection** (`isMinifiedFile`, line 234): computes `content.length / lineCount` (average bytes per line). If this exceeds **500 characters per line**, the file is considered minified and skipped. **Generated file detection** (`isGeneratedFile`, line 229): uppercases the first **1,000 characters** of the file and checks for any of these 11 exact marker strings: `CODE GENERATED`, `DO NOT EDIT`, `GENERATED FILE`, `THIS FILE IS AUTOGENERATED`, `THIS FILE WAS GENERATED`, `AUTO-GENERATED`, `AUTO GENERATED`, `AUTOMATICALLY GENERATED`, `GENERATED BY`, `@GENERATED`, `DO NOT MODIFY`. If any marker is found, the file is skipped. Both checks are applied after the extension blocklist and gitignore checks.",
+				"verdict": "correct",
+				"reason": "The actual answer correctly identifies both checks: average bytes per line > 500 for minification, and uppercased first 1,000 characters checked for generated markers — matching the expected thresholds exactly."
+			},
+			{
+				"id": "codex-invocation-details",
+				"question": "What special handling does the Codex CLI invocation have for large prompts and output schemas?",
+				"expected": "The prompt is fed via stdin (using '-' as the prompt argument) to avoid the OS ARG_MAX limit on argument size. Output schemas are normalized for OpenAI strict mode — every object node gets additionalProperties: false — and written to a temporary file passed via --output-schema, cleaned up afterwards.",
+				"actual": "**Large prompts**: The Codex CLI does not receive the prompt as a CLI argument. Instead, the `-` argument tells `codex exec` to read from stdin, and `proc.stdin.end(prompt)` writes the prompt immediately after spawn. This avoids the OS `ARG_MAX` limit for large prompts that would overflow as a CLI argument. **System prompt**: The Codex CLI has no `--system-prompt` flag; system instructions are merged inline with the user prompt as `'System instructions:\\n{systemPrompt}\\n\\nUser request:\\n{prompt}'`. **Output schemas**: When a `jsonSchema` is provided, `normalizeSchema` first recursively walks the schema and adds `additionalProperties: false` to every object node that lacks it (required by OpenAI strict structured-outputs semantics). The normalized schema is then written to a temporary file created with `mkdtempSync` under the OS temp directory with a `deepwiki-codex-schema-` prefix, and the path is passed via `--output-schema`. The temp directory is cleaned up after the process exits. If JSON parsing of the response fails, the wrapper also tries stripping markdown fences and extracting the first `{...}` span before giving up with a detailed error including the first 500 characters of the raw response.",
+				"verdict": "correct",
+				"reason": "The actual answer covers both key points: prompt written to stdin via '-' to avoid ARG_MAX limits, and output schemas normalized with additionalProperties:false, written to a temp file via --output-schema, and cleaned up afterward."
+			},
+			{
+				"id": "wiki-version-assignment",
+				"question": "How are wiki version numbers assigned when a repo has multiple wiki versions?",
+				"expected": "Inside a database transaction: the next version is computed as COALESCE(MAX(version), 0) + 1 across the repo's existing wikis, then the new wiki row is inserted with that version — making assignment atomic per repo.",
+				"actual": "Version numbers are assigned atomically inside a `db.transaction()` in `createWiki` using `SELECT COALESCE(MAX(version), 0) + 1 AS next FROM wikis WHERE repo_id = ?` scoped to the repo, then immediately used in the INSERT. This guarantees no two wikis for the same repo receive the same version number even under concurrent requests. The counter is per-repo (each repo has its own monotonically increasing sequence starting at 1). **Only a full regeneration** (POST `/api/generate` with `force: true`) creates a new `wikis` row and mints a new version number. Sync and Resume operations never bump the version — they operate on the existing wiki record. On database migration, existing rows without a `version` column were backfilled using a `ROW_NUMBER() OVER (PARTITION BY repo_id ORDER BY created_at)` window query.",
+				"verdict": "correct",
+				"reason": "The actual answer confirms the DB transaction with COALESCE(MAX(version),0)+1 scoped per repo, making assignment atomic. The extra detail about backfill migration does not contradict the key."
+			}
+		],
+		"counts": {
+			"correct": 19,
+			"partial": 4,
+			"incorrect": 0,
+			"unanswerable": 0
+		},
+		"score": 0.9130434782608695,
+		"floorScore": 0.8928571428571429,
+		"depthScore": 0.9444444444444444,
+		"corpusTruncated": false,
+		"judgeModel": "claude-sonnet-4-6"
+	}
+}

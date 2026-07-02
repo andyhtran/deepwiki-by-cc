@@ -12,8 +12,6 @@ describe("getEffectiveConfig", () => {
 		expect(result.generationModel).toBe(config.generationModel);
 		expect(result.parallelPageLimit).toBe(config.parallelPageLimit);
 		expect(result.display.showRepoOwner).toBe(config.showRepoOwner);
-		expect(result.embeddings.enabled).toBe(config.embeddingEnabled);
-		expect(result.embeddings.model).toBe(config.embeddingModel);
 	});
 
 	test("uses custom model when provided", () => {
@@ -80,23 +78,6 @@ describe("getEffectiveConfig", () => {
 	test("returns default for non-numeric parallelPageLimit", () => {
 		const result = getEffectiveConfig({ parallelPageLimit: "abc" });
 		expect(result.parallelPageLimit).toBe(config.parallelPageLimit);
-	});
-
-	test("parses embedding settings with bounds", () => {
-		const result = getEffectiveConfig({
-			embeddingsEnabled: "true",
-			embeddingsBaseUrl: "https://example.com",
-			embeddingsModel: "custom-model",
-			embeddingsTopK: "999",
-			embeddingsMaxContextChars: "50",
-			embeddingsTimeoutMs: "abc",
-		});
-		expect(result.embeddings.enabled).toBe(true);
-		expect(result.embeddings.baseUrl).toBe("https://example.com");
-		expect(result.embeddings.model).toBe("custom-model");
-		expect(result.embeddings.topK).toBe(30);
-		expect(result.embeddings.maxContextChars).toBe(1000);
-		expect(result.embeddings.timeoutMs).toBe(config.embeddingRequestTimeoutMs);
 	});
 
 	test("parses display settings", () => {

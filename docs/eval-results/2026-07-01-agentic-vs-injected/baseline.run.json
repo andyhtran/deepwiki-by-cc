@@ -1,0 +1,24 @@
+{
+	"label": "baseline",
+	"repo": "self",
+	"sha": "b69e8cb20bfd462a6c60a0d892f543817eddffa7",
+	"harnessSha": "f30ef60c050b8c2730cbd4a55979ec77a5a18e76",
+	"harnessDirty": true,
+	"model": "claude-sonnet-4-6",
+	"embeddingEnabled": false,
+	"embeddingModel": null,
+	"wikiId": 1,
+	"repoId": 1,
+	"startedAt": "2026-07-01T23:41:51.132Z",
+	"durationMs": 772476,
+	"totals": {
+		"promptTokens": 278,
+		"completionTokens": 68329,
+		"costUsd": 1.025769
+	},
+	"pageStats": {
+		"total": 12,
+		"completed": 12,
+		"failed": 0
+	}
+}

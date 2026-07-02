@@ -9,9 +9,6 @@ export function createWiki(data: {
 	model: string;
 	source_type?: string;
 	generation_duration_ms?: number | null;
-	embedding_enabled?: number;
-	embedding_model?: string | null;
-	embedding_endpoint_fingerprint?: string | null;
 }): Wiki {
 	const db = getDb();
 	// Assign the next per-repo version number atomically
@@ -21,8 +18,8 @@ export function createWiki(data: {
 			.get(data.repo_id) as { next: number };
 		return db
 			.prepare(
-				`INSERT INTO wikis (repo_id, version, title, description, structure, model, source_type, generation_duration_ms, embedding_enabled, embedding_model, embedding_endpoint_fingerprint)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`INSERT INTO wikis (repo_id, version, title, description, structure, model, source_type, generation_duration_ms)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				 RETURNING *`,
 			)
 			.get(
@@ -34,9 +31,6 @@ export function createWiki(data: {
 				data.model,
 				data.source_type ?? "github",
 				data.generation_duration_ms ?? null,
-				data.embedding_enabled ?? 0,
-				data.embedding_model ?? null,
-				data.embedding_endpoint_fingerprint ?? null,
 			) as Wiki;
 	})();
 }

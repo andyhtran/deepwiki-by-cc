@@ -298,8 +298,6 @@ export interface ScannedFile {
 	language: string | null;
 	content: string;
 	contentHash: string;
-	sizeBytes: number;
-	lineCount: number;
 }
 
 export function scanRepository(clonePath: string): ScannedFile[] {
@@ -392,8 +390,6 @@ function walkDirectory(
 			language,
 			content,
 			contentHash: createHash("sha256").update(content).digest("hex"),
-			sizeBytes: stat.size,
-			lineCount: content.split("\n").length,
 		});
 	}
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildOutlinePrompt } from "$lib/server/prompts/outline.js";
 import { buildPagePrompt } from "$lib/server/prompts/page.js";
-import { buildUpdatePrompt } from "$lib/server/prompts/update.js";
+import { buildUpdatePrompt, NO_CHANGES_SENTINEL } from "$lib/server/prompts/update.js";
 
 describe("buildOutlinePrompt", () => {
 	const baseParams = {
@@ -79,10 +79,21 @@ describe("buildPagePrompt", () => {
 		pageTitle: "Architecture Overview",
 		pageDescription: "Explains the high-level architecture",
 		sectionTitle: "Overview",
-		codeContext: "```typescript\nconst x = 1;\n```",
+		seedFilePaths: ["src/index.ts", "src/utils.ts"],
 		suggestedDiagrams: ["architecture", "flow"],
 		outline: "- Overview\n  - Architecture Overview",
+		outputMode: "schema" as const,
 	};
+
+	test("schema mode omits the final-message protocol", () => {
+		const prompt = buildPagePrompt(baseParams);
+		expect(prompt).not.toContain("FINAL message");
+	});
+
+	test("final-message mode instructs bare-markdown output", () => {
+		const prompt = buildPagePrompt({ ...baseParams, outputMode: "final-message" });
+		expect(prompt).toContain("FINAL message must be ONLY the wiki page markdown");
+	});
 
 	test("includes section and page title", () => {
 		const prompt = buildPagePrompt(baseParams);
@@ -90,14 +101,29 @@ describe("buildPagePrompt", () => {
 		expect(prompt).toContain("**Page**: Architecture Overview");
 	});
 
-	test("includes page description", () => {
+	test("includes page description and repo name", () => {
 		const prompt = buildPagePrompt(baseParams);
 		expect(prompt).toContain("Explains the high-level architecture");
+		expect(prompt).toContain("acme/widget");
 	});
 
-	test("includes code context", () => {
+	test("lists seed files and frames them as starting points", () => {
 		const prompt = buildPagePrompt(baseParams);
-		expect(prompt).toContain("const x = 1;");
+		expect(prompt).toContain("- src/index.ts");
+		expect(prompt).toContain("- src/utils.ts");
+		expect(prompt).toContain("starting points, not boundaries");
+	});
+
+	test("instructs exploration with read-only tools", () => {
+		const prompt = buildPagePrompt(baseParams);
+		expect(prompt).toContain("file-reading and search tools");
+		expect(prompt).toContain("follow imports");
+		expect(prompt).toContain("callers and consumers");
+	});
+
+	test("handles empty seed file list", () => {
+		const prompt = buildPagePrompt({ ...baseParams, seedFilePaths: [] });
+		expect(prompt).toContain("discover the relevant files yourself");
 	});
 
 	test("includes diagram instructions when diagrams suggested", () => {
@@ -115,11 +141,6 @@ describe("buildPagePrompt", () => {
 	test("includes outline context", () => {
 		const prompt = buildPagePrompt(baseParams);
 		expect(prompt).toContain("- Overview\n  - Architecture Overview");
-	});
-
-	test("includes repo name", () => {
-		const prompt = buildPagePrompt(baseParams);
-		expect(prompt).toContain("acme/widget");
 	});
 
 	test("uses neutral wording for docs-vs-code and forbids meta headings", () => {
@@ -148,16 +169,14 @@ describe("buildUpdatePrompt", () => {
 +const redis = new Redis();`,
 		currentPageContent: "# Architecture\n\nThe system uses a simple request/response model.",
 		pageTitle: "Architecture Overview",
-		updatedCodeContext: "```typescript\nconst redis = new Redis();\n```",
+		seedFilePaths: ["src/cache.ts", "src/api.ts"],
+		outline: "- Overview\n  - Architecture Overview",
+		outputMode: "schema" as const,
 	};
 
-	test("includes change title", () => {
+	test("includes change title and description", () => {
 		const prompt = buildUpdatePrompt(baseParams);
 		expect(prompt).toContain("Add caching layer");
-	});
-
-	test("includes change description", () => {
-		const prompt = buildUpdatePrompt(baseParams);
 		expect(prompt).toContain("Redis caching to the API endpoints");
 	});
 
@@ -167,41 +186,47 @@ describe("buildUpdatePrompt", () => {
 		expect(prompt).toContain("+import Redis from 'ioredis'");
 	});
 
-	test("includes current page content", () => {
+	test("includes current page content and title", () => {
 		const prompt = buildUpdatePrompt(baseParams);
 		expect(prompt).toContain("simple request/response model");
+		expect(prompt).toContain("## Current Wiki Page: Architecture Overview");
 	});
 
-	test("includes noChangesNeeded instruction", () => {
+	test("lists the page's source files as exploration seeds", () => {
+		const prompt = buildUpdatePrompt(baseParams);
+		expect(prompt).toContain("- src/cache.ts");
+		expect(prompt).toContain("- src/api.ts");
+	});
+
+	test("instructs agentic verification against the checkout", () => {
+		const prompt = buildUpdatePrompt(baseParams);
+		expect(prompt).toContain("the diff shows the delta, the checkout is the truth");
+		expect(prompt).toContain("Re-verify the page's existing claims");
+	});
+
+	test("schema mode includes noChangesNeeded instructions", () => {
 		const prompt = buildUpdatePrompt(baseParams);
 		expect(prompt).toContain("noChangesNeeded");
+		expect(prompt).not.toContain(NO_CHANGES_SENTINEL);
 	});
 
-	test("includes updated code context", () => {
-		const prompt = buildUpdatePrompt(baseParams);
-		expect(prompt).toContain("const redis = new Redis()");
+	test("final-message mode uses the sentinel instead of the schema", () => {
+		const prompt = buildUpdatePrompt({ ...baseParams, outputMode: "final-message" });
+		expect(prompt).toContain(NO_CHANGES_SENTINEL);
+		expect(prompt).not.toContain("noChangesNeeded");
 	});
 
 	test("truncates diff at 50K chars", () => {
 		const longDiff = "x".repeat(60_000);
 		const prompt = buildUpdatePrompt({ ...baseParams, changeDiff: longDiff });
-		// The diff is sliced to 50_000 chars inside the template
-		// The prompt should not contain all 60K chars
-		expect(prompt.length).toBeLessThan(baseParams.changeDiff.length + 60_000);
-		// Verify the truncation: the diff portion should be at most 50K
 		const diffMatch = prompt.match(/```diff\n([\s\S]*?)```/);
 		expect(diffMatch).toBeDefined();
-		expect(diffMatch![1].length).toBeLessThanOrEqual(50_001); // 50K + newline
-	});
-
-	test("includes page title", () => {
-		const prompt = buildUpdatePrompt(baseParams);
-		expect(prompt).toContain("## Current Wiki Page: Architecture Overview");
+		expect(diffMatch![1].length).toBeLessThanOrEqual(50_001);
 	});
 
 	test("includes repo name", () => {
 		const prompt = buildUpdatePrompt(baseParams);
-		expect(prompt).toContain("## Repository: acme/widget");
+		expect(prompt).toContain("acme/widget");
 	});
 
 	test("forbids methodology/meta headings", () => {

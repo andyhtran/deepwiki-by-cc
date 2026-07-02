@@ -1,8 +1,45 @@
-import { extractMermaidDiagrams } from "./generator.js";
+import { findTopLevelMermaidFences } from "$lib/markdown-fences.js";
 
-export const MAX_DIAGRAMS_PER_PAGE = 2;
+const MAX_DIAGRAMS_PER_PAGE = 2;
 
-const MERMAID_FENCE_RE = /```mermaid\n([\s\S]*?)```/g;
+// Re-exported so policy consumers (evals) get the scanner and the validators
+// from one module. The implementation lives in $lib/markdown-fences.ts because
+// the client-side wiki renderer must split on identical fence semantics —
+// this policy REMOVES over-cap blocks, so any parsing disagreement between
+// the layers corrupts quoted code or renders phantom diagrams.
+export { findTopLevelMermaidFences, type MermaidFencedBlock } from "$lib/markdown-fences.js";
+
+const VALID_MERMAID_TYPES = [
+	"graph",
+	"flowchart",
+	"sequencediagram",
+	"classdiagram",
+	"statediagram",
+	"erdiagram",
+	"gantt",
+	"pie",
+	"gitgraph",
+	"mindmap",
+	"timeline",
+	"quadrantchart",
+	"sankey",
+	"block",
+	"packet",
+	"architecture",
+];
+
+export function isValidMermaidSyntax(diagram: string): boolean {
+	const firstLine = diagram.split("\n")[0].trim().toLowerCase();
+	return VALID_MERMAID_TYPES.some(
+		(type) => firstLine.startsWith(type) || firstLine.startsWith(`${type}-`),
+	);
+}
+
+export function extractMermaidDiagrams(content: string): string[] {
+	return findTopLevelMermaidFences(content)
+		.map((b) => b.code)
+		.filter(isValidMermaidSyntax);
+}
 
 interface MermaidBlock {
 	start: number;
@@ -33,19 +70,10 @@ export function normalizeMermaidSignature(code: string): string {
 }
 
 function findMermaidBlocks(content: string): MermaidBlock[] {
-	const blocks: MermaidBlock[] = [];
-	MERMAID_FENCE_RE.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = MERMAID_FENCE_RE.exec(content)) !== null) {
-		const code = match[1].trim();
-		blocks.push({
-			start: match.index,
-			end: match.index + match[0].length,
-			code,
-			signature: normalizeMermaidSignature(code),
-		});
-	}
-	return blocks;
+	return findTopLevelMermaidFences(content).map((b) => ({
+		...b,
+		signature: normalizeMermaidSignature(b.code),
+	}));
 }
 
 export function enforceDiagramPolicy(
@@ -83,6 +111,8 @@ export function enforceDiagramPolicy(
 		newContent = newContent.slice(0, block.start) + newContent.slice(cutEnd);
 	}
 
-	const diagrams = extractMermaidDiagrams(newContent);
+	// keepBlocks already holds the surviving blocks in document order — no
+	// need to re-scan the rebuilt content.
+	const diagrams = keepBlocks.map((b) => b.code).filter(isValidMermaidSyntax);
 	return { content: newContent, diagrams };
 }

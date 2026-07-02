@@ -1,0 +1,140 @@
+[
+	{
+		"id": "cancel-mid-generation",
+		"question": "What happens when a wiki generation job is cancelled while pages are still being generated?",
+		"answer": "The job is marked cancelled in the database, an abort signal tells the handler to stop before starting further pages, and any in-flight Claude/Codex CLI subprocesses are killed. The worker checks the DB status afterward so a cancellation is never overwritten with completed or failed.",
+		"tags": ["queue", "behavior"]
+	},
+	{
+		"id": "embedding-fallback",
+		"question": "If embedding retrieval fails or returns no useful chunks during page generation, what context does the page prompt get instead?",
+		"answer": "It falls back to full-file context: the complete contents of the page's assigned file paths are loaded from the stored documents and injected into the prompt, truncated at 100,000 characters with a note listing any omitted files.",
+		"tags": ["retrieval", "behavior"]
+	},
+	{
+		"id": "hybrid-weakness",
+		"question": "In hybrid_auto retrieval mode, what makes constrained retrieval count as weak so the system falls back to a global search?",
+		"answer": "Any of: fewer than 3 chunks returned, total context under 4,000 characters, top similarity score below 0.3, or a top-score gap under 0.05 (flat score distribution). On fallback, global results are merged and deduplicated with the constrained ones within the context budget.",
+		"tags": ["retrieval", "volatile-defaults"]
+	},
+	{
+		"id": "sync-page-selection",
+		"question": "How does the sync operation decide which wiki pages to regenerate after new commits?",
+		"answer": "It diffs the clone from the last recorded commit SHA to HEAD, collects the changed file paths, and regenerates only pages whose stored file path list contains at least one changed file. Each affected page gets an update prompt that includes the diff and recent commit messages, and the model may respond that no changes are needed.",
+		"tags": ["sync", "behavior"]
+	},
+	{
+		"id": "parallel-limit",
+		"question": "How many wiki pages are generated concurrently by default, and what are the allowed bounds?",
+		"answer": "2 pages in parallel by default, configurable between 1 and 5 via the parallel page limit setting.",
+		"tags": ["config", "volatile-defaults"]
+	},
+	{
+		"id": "model-invocation",
+		"question": "How does the system call the AI models - through HTTP APIs/SDKs or some other mechanism?",
+		"answer": "It spawns CLI subprocesses: the Claude CLI in print mode with streaming JSON output, and the Codex CLI via codex exec with JSON output. Stdout events are parsed for text, structured output, and token usage. Calls have timeouts (10 minutes by default) and retry with exponential backoff on retryable errors, and active processes are tracked so they can be killed on cancellation.",
+		"tags": ["ai", "architecture"]
+	},
+	{
+		"id": "storage",
+		"question": "Where are scanned repository files and generated wikis stored?",
+		"answer": "In a SQLite database: scanned file contents live in a documents table, generated wikis and per-page content in wikis and wiki_pages tables, along with jobs and optional embedding chunk tables.",
+		"tags": ["storage", "architecture"]
+	},
+	{
+		"id": "outline-inputs",
+		"question": "What inputs does the outline generation step receive - does it see full source code?",
+		"answer": "No. The outline prompt receives only the repo name, the file tree, the README as supporting context, the file count, and the list of languages. Full source content is only used later during per-page generation.",
+		"tags": ["generation", "architecture"]
+	},
+	{
+		"id": "page-postprocessing",
+		"question": "What deterministic post-processing runs on each generated page before it is saved?",
+		"answer": "A duplicated leading H1 matching the page title is stripped; headings that leak prompt-policy wording or are bare code spans are sanitized; a diagram policy validates and limits Mermaid diagrams; and a link policy rewrites absolute-path links whose suffix matches a known repo file into GitHub blob URLs or inline code.",
+		"tags": ["generation", "behavior"]
+	},
+	{
+		"id": "resume-selection",
+		"question": "Which pages does the resume operation regenerate?",
+		"answer": "Only pages whose status is failed, pending, or generating. Completed pages are left untouched.",
+		"tags": ["queue", "behavior"]
+	},
+	{
+		"id": "unchanged-repo",
+		"question": "When a full generation runs again and the repo's commit SHA is unchanged, what work is skipped?",
+		"answer": "Data preparation is skipped: file contents are not re-stored because the commit SHA matches the stored last commit SHA, so existing document data is reused. A new wiki version is still created and its pages are generated fresh.",
+		"tags": ["generation", "behavior"]
+	},
+	{
+		"id": "scanner-filters",
+		"question": "What kinds of files does the repository scanner exclude?",
+		"answer": "It respects .gitignore and skips build/vendor/cache directories (node_modules, dist, .svelte-kit, etc.), binary/media/lock-file extensions, secret files like .env and credentials, files over 1 MB or empty, files containing null bytes, files with generated-code markers, and minified files detected by average line length. Results are capped at 10,000 files.",
+		"tags": ["scanning", "behavior"]
+	},
+	{
+		"id": "version-metadata",
+		"question": "What generation metadata does each wiki version record?",
+		"answer": "The generation model used, plus an embedding snapshot: whether embeddings were enabled, the embedding model name, and a fingerprint of the embedding endpoint. Individual pages also record their model, token counts, and generation time.",
+		"tags": ["storage", "versioning"]
+	},
+	{
+		"id": "outline-hardening",
+		"question": "After the model returns a wiki outline, what guards protect against bad model output?",
+		"answer": "The outline JSON is validated for required structure (title, sections, pages with ids and titles), and a deterministic normalizer then dedupes file paths, drops hallucinated paths that don't exist in the scanned repo, injects entrypoint files into overview pages that lack code files, and clamps diagram suggestions.",
+		"tags": ["generation", "behavior"]
+	},
+	{
+		"id": "worker-loop-details",
+		"question": "How does the background worker loop actually run — how often does it poll, and what prevents two jobs from being processed at once?",
+		"answer": "A setInterval fires every 1 second. A module-level 'processing' boolean acts as a mutex: if the previous tick is still running, the new tick returns immediately. Jobs are claimed atomically with a single UPDATE ... RETURNING statement that flips the oldest pending job to processing.",
+		"tags": ["depth", "queue"]
+	},
+	{
+		"id": "cancel-race",
+		"question": "Can a cancellation overwrite a job that already finished (or vice versa)? What specifically prevents races between cancellation and completion?",
+		"answer": "No. The cancel SQL only updates jobs whose status is pending or processing, so terminal jobs can't be flipped. After a handler finishes, the worker re-reads the job's status from the database and skips marking it completed if it was cancelled in the meantime; the failure path likewise checks for cancelled before writing failed.",
+		"tags": ["depth", "queue"]
+	},
+	{
+		"id": "context-truncation",
+		"question": "When full file contents are injected into a page prompt, what exactly happens if the combined context is too large?",
+		"answer": "The formatted context is cut at 100,000 characters, a '(context truncated)' note is appended, and any files that were dropped entirely are listed by path under a 'Files omitted due to context limit' note so the model knows what it isn't seeing.",
+		"tags": ["depth", "retrieval"]
+	},
+	{
+		"id": "retry-conditions",
+		"question": "Which Claude CLI failures are retried, how many times, and with what backoff?",
+		"answer": "Errors whose message mentions rate limits, overload, SIGTERM, or a nonzero exit code are considered retryable. Up to 3 retries with exponential backoff of 2^attempt times 2 seconds (2s, 4s, 8s). Other errors are thrown immediately.",
+		"tags": ["depth", "ai"]
+	},
+	{
+		"id": "clone-refresh",
+		"question": "What happens when generating a wiki for a GitHub repo that was cloned previously?",
+		"answer": "The existing clone is reused: the code attempts git fetch --unshallow (ignoring failure if the clone isn't shallow), then git pull --ff-only. If the pull fails, the clone directory is deleted and the repo is re-cloned fresh. For private repos a GH_TOKEN is embedded in the clone URL, and tokens are sanitized out of error messages.",
+		"tags": ["depth", "scanning"]
+	},
+	{
+		"id": "overview-injection",
+		"question": "In detail, what does the outline normalizer do to an Overview page that has too few code files, and what are the thresholds?",
+		"answer": "If the Overview page has fewer than 2 non-documentation files, up to 2 entrypoint candidates are injected from a priority list (package.json, src/index.*, src/main.*, main/server/app entry files, etc.) that exist in the scanned repo. Then if documentation files exceed 50% of the page's paths, doc files are trimmed (README-like files kept preferentially). Diagram suggestions are cleared entirely on pages with 2 or fewer files and clamped to at most 2 otherwise.",
+		"tags": ["depth", "generation"]
+	},
+	{
+		"id": "minified-detection",
+		"question": "How exactly does the scanner decide a file is minified or generated?",
+		"answer": "Minified: average line length above 500 characters (content length divided by line count). Generated: the first 1,000 characters, uppercased, contain markers like 'DO NOT EDIT', 'CODE GENERATED', 'AUTO-GENERATED', or '@GENERATED'. Either condition excludes the file.",
+		"tags": ["depth", "scanning"]
+	},
+	{
+		"id": "codex-invocation-details",
+		"question": "What special handling does the Codex CLI invocation have for large prompts and output schemas?",
+		"answer": "The prompt is fed via stdin (using '-' as the prompt argument) to avoid the OS ARG_MAX limit on argument size. Output schemas are normalized for OpenAI strict mode — every object node gets additionalProperties: false — and written to a temporary file passed via --output-schema, cleaned up afterwards.",
+		"tags": ["depth", "ai"]
+	},
+	{
+		"id": "wiki-version-assignment",
+		"question": "How are wiki version numbers assigned when a repo has multiple wiki versions?",
+		"answer": "Inside a database transaction: the next version is computed as COALESCE(MAX(version), 0) + 1 across the repo's existing wikis, then the new wiki row is inserted with that version — making assignment atomic per repo.",
+		"tags": ["depth", "versioning"]
+	}
+]

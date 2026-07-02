@@ -9,8 +9,6 @@ describe("buildFileTree", () => {
 			language: null,
 			content: "",
 			contentHash: "",
-			sizeBytes: 0,
-			lineCount: 0,
 		};
 	}
 

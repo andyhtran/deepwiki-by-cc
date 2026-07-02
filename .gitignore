@@ -9,3 +9,5 @@ data/
 *.db-shm
 .vite/
 dist/
+evals/.data/
+evals/results/

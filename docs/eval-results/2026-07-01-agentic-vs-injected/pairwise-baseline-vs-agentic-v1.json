@@ -1,0 +1,109 @@
+{
+	"labelA": "baseline",
+	"labelB": "agentic-v1",
+	"judgeModel": "claude-sonnet-4-6",
+	"judgedAt": "2026-07-02T01:06:39.377Z",
+	"tally": {
+		"baseline": 0,
+		"agentic-v1": 4,
+		"tie": 4
+	},
+	"topics": [
+		{
+			"topicId": "job-queue",
+			"title": "Job queue, worker loop, and cancellation",
+			"pageA": "job-queue",
+			"pageB": "job-queue",
+			"verdicts": ["agentic-v1", "agentic-v1"],
+			"winner": "agentic-v1",
+			"reasons": [
+				"Both pages cover the same core ground with similar code snippets and accuracy, but Page B is materially better on criteria 1 and 3. On behavioral depth: Page B explains *why* stale `processing` jobs cannot be auto-resumed (in-memory subprocess handles and partial page writes are gone), calls out `parallelPageLimit` as a user-configurable setting enforced via `pLimit`, gives a more complete progress-percentage table (3–8% scanning, 9% embeddings vs. Page A's coarser breakdown), and explicitly names the `generating` status catch in the resume handler as a crash-recovery mechanism. On connectedness: Page B adds a job-creation entry-points table (POST /api/generate, /update, /resume) with their duplicate-guard logic — a significant omission in Page A that leaves the reader unable to understand how work enters the queue. Page A's \"Phase A, Phase C\" label in the full-generation description is confusing (Phase B is never mentioned). Page B's architecture overview naming the four collaborating files also gives faster orientation. Neither page has grounding or clarity problems; the gap is in completeness of runtime behavior and system-level connections.",
+				"Page A's job-creation entry-points table (showing all three creation routes, their deduplication guards, and the full client→job cycle) is meaningful connectivity that Page B entirely omits. Combined with the precise progress-percentage table (2%, 3–8%, 9%, 10%, 15–95%, 95%), Page A is more grounded and better connected to the surrounding system. Page B has real advantages — the non-obvious stale-job history and more complete cancellation code — but they don't outweigh the connectivity gap."
+			]
+		},
+		{
+			"topicId": "generation-pipeline",
+			"title": "Wiki generation pipeline (outline and pages)",
+			"pageA": "wiki-generation",
+			"pageB": "ai-content-generation",
+			"verdicts": ["agentic-v1", "baseline"],
+			"winner": "tie",
+			"reasons": [
+				"Page B wins on grounding and behavioral depth for the core generation pipeline. It names specific, verifiable constants that Page A omits or vaguely describes: the 25-file-path cap per page (`maxFilePathsPerPage`), the 100,000-character hard cap on the full-file fallback, the exact six `META_POLICY_HEADINGS` strings, `overviewMinNonDocFiles = 2`, and `overviewMaxDocRatio = 0.5`. It also explains a structurally important distinction Page A glosses over: outline generation sends free-form JSON (no `jsonSchema`) while page generation uses a typed `PAGE_SCHEMA` for structured output, and it explains how each provider handles that difference. The scale-guidance table (file-count bands → outline shape) and the Mermaid deduplication algorithm (`normalizeMermaidSignature`) give concrete insight into model-steering and post-processing behavior that Page A omits. The sequence diagram makes the per-page data flow across `handlers.ts → generator.ts → retriever.ts → provider → db` clear and traceable. Page A's coverage of sync and resume flows is genuinely valuable and Page B lacks it, but the stated topic is \"outline and pages,\" and on that core topic Page B is meaningfully more precise, verifiable, and useful to a developer trying to understand actual runtime behavior.",
+				"Page B covers the same full-generation pipeline as Page A with comparable depth, but also documents the sync, resume, and cancellation flows that are essential parts of how this system actually works. The sync \"no-changes optimization\" (UPDATE_SCHEMA with noChangesNeeded, surgical per-file rescanning, ANN index rebuild), the resume handler's mid-flight page recovery logic, and the cancellation semantics (JobCancelledError, in-flight pages left in \"generating\") are all meaningful runtime behaviors that Page A omits entirely. Page B's progress table is also more complete, its SQL for atomic version assignment is a concrete verification anchor, and the cost accumulation path (accumulateUsage → job record → UI display) shows a system connection Page A skips. Page A has slightly more granular constant names for the normalizer (overviewMinNonDocFiles, overviewMaxDocRatio) and more detail on diagram signature deduplication, but those are marginal gains against Page B's substantially broader coverage of the three handler paths a developer would actually encounter."
+			]
+		},
+		{
+			"topicId": "retrieval",
+			"title": "Embeddings and retrieval modes",
+			"pageA": "retrieval-modes",
+			"pageB": "retrieval-modes",
+			"verdicts": ["agentic-v1", "tie"],
+			"winner": "tie",
+			"reasons": [
+				"Page B wins on grounding and behavioral depth. The decisive differences: (1) Page B includes line numbers throughout (retriever.ts:92, retrieval.ts:49, retrieval.ts:159, retrieval.ts:231), making claims verifiable rather than asserted; (2) Page B shows the full body of `isRetrievalWeak` including the reasons array construction, so the reader can see exactly how diagnosis strings are formed — Page A only shows the signature; (3) Page B shows the actual `retrieveWithMode` internal branching logic as code, clarifying the constrained-first-then-weakness-check flow; (4) Page B explicitly states that settings are read fresh on every invocation (no restart needed), which is a meaningful behavioral fact Page A omits; (5) Page B's \"Integration with the Generator\" section names both call sites with line numbers (242 and 320) and states that the page title is passed as query text — Page A never connects back to the generator; (6) Page B's configuration table includes clamped ranges, Page A does not; (7) Page B clarifies the deduplication subtlety (global only overwrites constrained if it actually scored higher) more precisely. Page A's Mermaid flowchart is a useful visual aid but does not compensate for these gaps across grounding, behavioral depth, and connectedness.",
+				"Both pages cover behavioral depth, grounding, and connectedness at comparable levels. Page A edges on implementation detail (full isRetrievalWeak body, merge tie-breaking subtlety, settings-read-per-call note) but contains a factual grounding error (generator.ts line numbers 242/320 vs actual 298/376). Page B compensates with a Mermaid flow diagram that makes the decision tree — including the empty-after-global edge case — immediately clear, and adds a meaningful behavioral note A lacks (\"fallback is silent to the AI\"). The trade-offs are genuine rather than lopsided."
+			]
+		},
+		{
+			"topicId": "scanning",
+			"title": "Repository scanning and filtering",
+			"pageA": "repository-scanning",
+			"pageB": "repository-ingestion",
+			"verdicts": ["agentic-v1", "agentic-v1"],
+			"winner": "agentic-v1",
+			"reasons": [
+				"Page B wins on connectedness and behavioral depth. The decisive gaps are three behaviors Page A omits entirely: (1) the HTTP entry point with its two-stage duplicate/dedup check before any disk I/O; (2) the commit-SHA fast path (`skipDataPrep`) that skips DB writes and embedding refreshes when the repo hasn't changed; (3) how `ScannedFile[]` feeds the document store and embedding index downstream. These are runtime behaviors a developer must understand to reason about the system under load or when debugging stale wikis. Page B also includes a mermaid flow diagram, explicit config table with byte values, and line-number anchors, all of which improve grounding and navigability. Page A is stronger on edge cases (symlinks, non-UTF-8, read errors, empty directories) and has a more exhaustive SKIP_DIRS/SKIP_FILES enumeration, but those are reference-level details — the behavioral and connectedness gap Page B closes is more consequential for understanding how this area actually works.",
+				"Page A is stronger on all three deciding criteria. On behavioral depth, it uniquely covers the two-stage duplicate detection logic (active-job check vs completed-wiki check), the `force` flag round-trip with the frontend dialog, the `skipDataPrep` fast path with exact code, git timeout values (300s clone, 10s rev-parse), and identifies that per-directory .gitignore files are intentionally not loaded. On grounding, it supplies specific line numbers for every named function (e.g. `git.ts:101`, `git.ts:134`, `scanner.ts:305`) and traces config values to their source file and line range. On connectedness, it provides a Mermaid flowchart showing the full path from HTTP POST through parse, dedup, job creation, worker pickup, clone/scan, document store, embeddings, and outline generation, and explicitly names both downstream consumers of ScannedFile[]. Page B's edge-cases section (symlinks, read errors, non-UTF-8, empty dirs) and buildFileTree coverage are genuinely useful additions that Page A omits, but they are not enough to overcome A's advantage in system-level connectivity and behavioral specificity."
+			]
+		},
+		{
+			"topicId": "providers",
+			"title": "AI provider invocation (Claude/Codex CLIs)",
+			"pageA": "ai-providers",
+			"pageB": "provider-abstraction",
+			"verdicts": ["agentic-v1", "baseline"],
+			"winner": "tie",
+			"reasons": [
+				"Page B edges out Page A on three of the four criteria within the stated topic scope (\"AI provider invocation — Claude/Codex CLIs\").\n\n**Behavioral depth**: Page B covers several runtime behaviors Page A omits or undersells. It explains that Codex cost is *not* reported by the CLI and must be computed client-side via `calculateCost()`; that Codex duration is a `Date.now()` delta (not API-reported); and that Codex's retryable-error check is broader than Claude's — it also matches `\"timed out\"`, `\"429\"`, and `\"503\"`, which is a meaningful behavioral difference. Page A's retry section describes only Claude's conditions and doesn't document the corresponding Codex behavior. Both pages cover timeout defaults, exponential backoff, and stream parsing at similar depth.\n\n**Grounding**: Page B includes Codex pricing (`input: 1.75, output: 14.0`) in the registry excerpt where Page A leaves those fields blank — a gap a developer would notice immediately if they went to verify. Page B also makes the backoff formula explicit (`2^attempt * 2000 ms`) and notes the `additionalProperties: false` requirement is driven by OpenAI strict structured-output semantics (a *why*, not just a *what*). Both pages use real file paths and plausible values throughout.\n\n**Connectedness**: Page B's \"How the Generator Calls the Provider\" section concretely shows the three call sites (outline, page, update generation), what schema each passes, and why `content` is nullable in `UPDATE_SCHEMA`. It also shows the worker's cancellation call sequence with a code snippet, closing the loop between the provider layer and its callers. Page A mentions the generator and worker in passing but does not show these integration points in a way a developer could act on.\n\n**Where Page A is stronger**: It covers the diagram policy, link policy, and outline normalizer, which are downstream post-processing steps Page B ignores. These are real parts of the generation pipeline, and documenting them here adds value. However, the stated topic is \"AI provider invocation (Claude/Codex CLIs)\" — the post-processing modules are not the CLIs themselves. Within the actual topic, Page B is more complete and more verifiable.\n\n**Clarity**: Page B's closing summary table (prompt delivery, system prompt, schema, stream protocol, cost, duration, retry, CLAUDECODE env) is the single most useful reference artifact in either page for a developer debugging provider differences. Page A has no equivalent.\n\nThe margin is real but not dramatic — Page A's post-processing coverage is genuinely useful context. On the criteria that matter for understanding how the provider layer *actually works*, Page B wins.",
+				"Page B covers the same provider internals as A (subprocess commands, stream protocols, retry logic, cancellation, model registry) at comparable depth and grounding, but adds three post-processing modules — diagram policy, link policy, and outline normalizer — that are integral to understanding what actually happens with AI output. These sections are densely grounded with concrete thresholds (2-diagram cap, 25 max file paths, 50% doc-ratio trim, progressive suffix matching for link rewriting) that look verifiable. The consolidated failure-modes table at the end is a meaningful addition: it surfaces the \"empty response\" case that A omits and centralizes all error/retry behavior in one scannable place. Page A has one advantage — it explicitly names the three generator calling contexts (outline, page, update) and explains why UPDATE_SCHEMA makes content nullable — but Page B covers those flows adequately. Overall, B gives a developer a more complete picture of the runtime pipeline from invocation through post-processing, which is what \"how this part of the system actually works\" requires."
+			]
+		},
+		{
+			"topicId": "sync-resume",
+			"title": "Sync, resume, and incremental updates",
+			"pageA": "job-queue",
+			"pageB": "sync-and-resume",
+			"verdicts": ["agentic-v1", "agentic-v1"],
+			"winner": "agentic-v1",
+			"reasons": [
+				"Page B goes substantially deeper on the actual topic. It explains the four-step sync pipeline with concrete mechanics (4 git commands, 10 MB diff buffer, 50k-char prompt truncation), the deliberate design of writing last_commit_sha last for crash safety, the noChangesNeeded optimization and its metadata-write behavior, and why the generating state is included in the resume filter. It also covers wiki versioning and the URL routing layer. Page A treats sync and resume as brief subsections while covering the broader job-queue system, and misses most of the behavioral specifics that matter for understanding these operations.",
+				"Page A directly addresses the topic with deeper behavioral coverage: it explains the exact git commands used in the diff (including the 10 MB buffer cap), the SHA-last persistence design and why it enables crash recovery, the update prompt mechanics (50k char truncation, noChangesNeeded short-circuit, outline summary injection), the version selector redirect logic, and a concrete edge-case table. Page B is excellent on job queue internals — cancellation, SSE polling, atomic claiming — but those are adjacent mechanics. For the specific question of how sync detects and propagates changes, how resume decides what to retry, and how versions are tracked and served, Page A is materially more complete and grounded."
+			]
+		},
+		{
+			"topicId": "storage",
+			"title": "Database schema and persistence",
+			"pageA": "database-schema",
+			"pageB": "database-schema",
+			"verdicts": ["agentic-v1", "baseline"],
+			"winner": "tie",
+			"reasons": [
+				"Both pages cover the same factual territory with real file paths, SQL, and TypeScript. B edges ahead on behavioral depth and grounding in three specific ways that matter to a developer working in this codebase: (1) it shows the actual `ON CONFLICT DO UPDATE SET content = COALESCE(excluded.content, wiki_pages.content)` SQL, making the resume-generation flow concrete rather than described in prose; (2) it includes a formal job state machine with valid transitions, which is more actionable than A's inline description; (3) its \"Domain Module Patterns\" section synthesizes the cross-cutting conventions (prepared statements, dynamic UPDATE builders, upsert-over-insert, transaction scope) into a single reference, which A lists piecemeal per-table. B also grounds two design decisions A leaves implicit: the denormalized `repo_id/file_path/content_hash` columns in `chunk_embeddings` are explained as enabling repo-scoped queries without a join, and the `settings` table is noted to have no key schema in the DB — interpretation lives in routes and UI. A's one advantage is a consolidated function-name inventory per module, but B covers all those functions organized by table. The difference is real but not large; B wins narrowly on behavioral depth and grounding.",
+				"Both pages are high quality and cover the same ground thoroughly. Page B edges out on behavioral depth — the criterion that matters most — through three specific additions that explain runtime consequences rather than just structure: (1) the WAL explanation ties the pragma to a concrete scenario (\"the worker writes page content while the API routes read job progress concurrently\"); (2) the `ON DELETE SET NULL` rationale for `jobs.wiki_id` explains the audit-trail intent that Page A omits; (3) the stale-job note (\"Previously these were re-queued, which caused unexpected auto-restarts after deploys\") gives the behavioral history behind a non-obvious decision. Page B also includes actual DDL for each table rather than hand-rolled column tables, making claims more directly verifiable. Page A has genuine advantages — the `COALESCE(excluded.content, wiki_pages.content)` upsert SQL is an important behavioral detail Page B skips, and the \"Domain Module Patterns\" section is a useful cross-cutting summary — but these do not overcome Page B's edge on the why-not-just-what explanations that most directly answer how the system actually works."
+			]
+		},
+		{
+			"topicId": "frontend",
+			"title": "Wiki viewer and UI",
+			"pageA": "routes-and-settings",
+			"pageB": "wiki-viewer",
+			"verdicts": ["agentic-v1", "agentic-v1"],
+			"winner": "agentic-v1",
+			"reasons": [
+				"For the specific scope of \"Wiki viewer and UI,\" Page B wins on behavioral depth and grounding. It goes substantially deeper into the rendering components that matter most here: WikiPage's Mermaid-splitting algorithm, the three markdown renderer overrides (syntax highlighting, link rewriting with file_paths suffix matching, image replacement with reasoning), heading deduplication across chunk boundaries, MermaidDiagram's mount sequence and sanitization regexes with explanations of why each exists, TableOfContents's IntersectionObserver rootMargin (-80px 0px -80% 0px) and the click-vs-observer priority, and the iOS scroll-lock pattern with exact mechanics (fixed positioning + negative top offset + cleanup restoration). These are concrete, verifiable details a developer needs to modify or debug these components. Page A covers more surface area (home page deduplication, settings API, REST endpoints) but those fall outside the stated scope, and its wiki-viewer coverage — while solid — is shallower on component internals. Page B also better explains the connectedness between wikiDrawer singleton, the global header, and the route component. Page A's strongest unique contribution is the inline job overlay priority order and the parallel PUT pattern in settings, but neither outweighs Page B's depth on the rendering pipeline.",
+				"For the specific topic of \"Wiki viewer and UI,\" Page A wins on behavioral depth. It explains the rendering pipeline end-to-end — Mermaid block splitting before markdown parsing, the three-pass link/image rewriting logic (suffix matching, sourceBaseUrl fallback to inline `<code>`), heading deduplication across split chunks, DOMPurify's allowlist for `<div>`/`class`/`id`, the exact Mermaid sanitization regexes and why each exists, the IntersectionObserver rootMargin value and what it achieves, and the iOS scroll-lock pattern with its cleanup contract. These are all verifiable, non-obvious behavioral details a developer needs to understand the system. Page B covers the wiki viewer route reasonably well but spends the majority of its words on the home page, settings form, and REST API — areas outside this topic — and stays at a shallower level on the actual UI components (WikiTree, WikiPage, MermaidDiagram, TableOfContents get little to no behavioral detail). Page B does add one useful piece Page A omits — the four-way job overlay priority order — but that narrow gap doesn't offset Page A's superior depth on the rendering and interaction behavior that defines this area."
+			]
+		}
+	]
+}

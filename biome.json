@@ -25,7 +25,15 @@
 		"lineWidth": 100
 	},
 	"files": {
-		"includes": ["**", "!**/node_modules", "!**/.svelte-kit", "!**/build", "!**/data"]
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/.svelte-kit",
+			"!**/build",
+			"!**/data",
+			"!**/evals/.data",
+			"!**/evals/results"
+		]
 	},
 	"overrides": [
 		{
