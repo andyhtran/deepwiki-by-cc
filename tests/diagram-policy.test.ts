@@ -107,3 +107,39 @@ describe("normalizeMermaidSignature", () => {
 		expect(a).not.toBe(b);
 	});
 });
+
+describe("fence-aware block detection", () => {
+	test("quoted mermaid fences inside code blocks are not treated as diagrams", () => {
+		// A page documenting mermaid handling: quoted example inside a
+		// quadruple fence, plus three real diagrams (one over the cap).
+		const quoted = [
+			"The viewer splits on mermaid fences, for example:",
+			"",
+			"````md",
+			"```mermaid",
+			"graph TD",
+			"    Quoted --> Example",
+			"```",
+			"````",
+		].join("\n");
+		const real = (label: string) =>
+			`\`\`\`mermaid\ngraph TD\n    ${label} --> Sink${label}\n\`\`\``;
+		const content = `${quoted}\n\n${real("A")}\n\n${real("B")}\n\n${real("C")}`;
+
+		const result = enforceDiagramPolicy(content);
+		// The quoted example is untouched even though the cap removed a real block.
+		expect(result.content).toContain("Quoted --> Example");
+		expect(result.content).toContain("````md");
+		expect(result.diagrams).toHaveLength(2);
+		expect(result.content).not.toContain("C --> SinkC");
+	});
+
+	test("inline code span mentions of mermaid fences are ignored", () => {
+		const content =
+			"The policy scans for ` ```mermaid ` fences.\n\n" +
+			"```ts\nconst re = /```mermaid\\n([\\s\\S]*?)```/g;\n```";
+		const result = enforceDiagramPolicy(content);
+		expect(result.content).toBe(content);
+		expect(result.diagrams).toEqual([]);
+	});
+});

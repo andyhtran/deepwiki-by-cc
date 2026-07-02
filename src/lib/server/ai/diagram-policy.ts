@@ -1,8 +1,97 @@
-import { extractMermaidDiagrams } from "./generator.js";
+const MAX_DIAGRAMS_PER_PAGE = 2;
 
-export const MAX_DIAGRAMS_PER_PAGE = 2;
+export interface MermaidFencedBlock {
+	/** Offset of the opening fence line. */
+	start: number;
+	/** Offset just past the closing fence marker (before its newline). */
+	end: number;
+	code: string;
+}
 
-const MERMAID_FENCE_RE = /```mermaid\n([\s\S]*?)```/g;
+/**
+ * Fence-aware scan for top-level mermaid blocks. Pages that document mermaid
+ * handling legitimately contain "```mermaid" inside inline code spans and
+ * quoted code blocks; naive regex matching mistakes that documentation for
+ * diagrams — and the policy below REMOVES over-cap blocks, so a false match
+ * would corrupt quoted code. CommonMark rules applied: fences open at line
+ * start (≤3 spaces indent) and close only on a bare marker of the same
+ * character and at least the same length.
+ */
+export function findTopLevelMermaidFences(content: string): MermaidFencedBlock[] {
+	const blocks: MermaidFencedBlock[] = [];
+	const lines = content.split("\n");
+	let offset = 0;
+	let open: {
+		char: string;
+		len: number;
+		isMermaid: boolean;
+		start: number;
+		codeLines: string[];
+	} | null = null;
+
+	for (const line of lines) {
+		const m = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+		if (m) {
+			const marker = m[1];
+			const rest = m[2].trim();
+			if (!open) {
+				const info = rest.split(/\s+/)[0]?.toLowerCase() ?? "";
+				open = {
+					char: marker[0],
+					len: marker.length,
+					isMermaid: info === "mermaid",
+					start: offset,
+					codeLines: [],
+				};
+			} else if (marker[0] === open.char && marker.length >= open.len && rest === "") {
+				if (open.isMermaid) {
+					const code = open.codeLines.join("\n").trim();
+					if (code) blocks.push({ start: open.start, end: offset + line.length, code });
+				}
+				open = null;
+			} else {
+				open.codeLines.push(line);
+			}
+		} else if (open) {
+			open.codeLines.push(line);
+		}
+		offset += line.length + 1;
+	}
+
+	return blocks;
+}
+
+const VALID_MERMAID_TYPES = [
+	"graph",
+	"flowchart",
+	"sequencediagram",
+	"classdiagram",
+	"statediagram",
+	"erdiagram",
+	"gantt",
+	"pie",
+	"gitgraph",
+	"mindmap",
+	"timeline",
+	"quadrantchart",
+	"sankey",
+	"block",
+	"packet",
+	"architecture",
+];
+
+export function isValidMermaidSyntax(diagram: string): boolean {
+	const firstLine = diagram.split("\n")[0].trim().toLowerCase();
+	return VALID_MERMAID_TYPES.some(
+		(type) => firstLine.startsWith(type) || firstLine.startsWith(`${type}-`),
+	);
+}
+
+export function extractMermaidDiagrams(content: string): string[] {
+	return findTopLevelMermaidFences(content)
+		.map((b) => b.code)
+		.filter(isValidMermaidSyntax);
+}
 
 interface MermaidBlock {
 	start: number;
@@ -33,19 +122,10 @@ export function normalizeMermaidSignature(code: string): string {
 }
 
 function findMermaidBlocks(content: string): MermaidBlock[] {
-	const blocks: MermaidBlock[] = [];
-	MERMAID_FENCE_RE.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = MERMAID_FENCE_RE.exec(content)) !== null) {
-		const code = match[1].trim();
-		blocks.push({
-			start: match.index,
-			end: match.index + match[0].length,
-			code,
-			signature: normalizeMermaidSignature(code),
-		});
-	}
-	return blocks;
+	return findTopLevelMermaidFences(content).map((b) => ({
+		...b,
+		signature: normalizeMermaidSignature(b.code),
+	}));
 }
 
 export function enforceDiagramPolicy(
